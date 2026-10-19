@@ -1,0 +1,24 @@
+{
+  "name": "xstk-academy",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "node server.js",
+    "dev:all": "concurrently -k \"npm run dev\" \"npm run dev:api\"",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "^0.468.0",
+    "katex": "^0.16.11"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "concurrently": "^9.1.2"
+  }
+}
