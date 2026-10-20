@@ -74,6 +74,30 @@ function Dashboard({completed,progress,xp,nextLesson,onGo,onLesson,wrongCount}) 
   const recent = lessons.filter(l => completed.includes(l.id)).slice(-3).reverse();
   return <>
     <section className="welcome-banner"><div className="welcome-copy"><div className="welcome-chip"><Sparkles size={13}/> LỘ TRÌNH CỦA BẠN</div><h1>Mỗi ngày hiểu thêm<br/>một chút thống kê.</h1><p>Học từ bản chất, luyện từng dạng bài và nhìn thấy sự tiến bộ qua từng chặng.</p><button className="primary-button" onClick={() => onLesson(nextLesson)}>Học tiếp <ArrowRight size={16}/></button></div><div className="welcome-art"><div className="art-sun"/><div className="hill hill-one"/><div className="hill hill-two"/><div className="path-line"/><div className="art-node node-one"><Check size={14}/></div><div className="art-node node-two">Σ</div><div className="art-node node-three">Z</div><div className="art-caption">Từng bước chinh phục XSTK</div></div></section>
+    <section className="learning-overview" aria-label="Tổng quan tiến độ học tập">
+      <div className="learning-progress-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">TỔNG QUAN HỌC TẬP</span><h2>Tiến độ của bạn</h2></div><span className="learning-live-dot">Dữ liệu thực tế</span></div>
+        <div className="learning-progress-body">
+          <div className="learning-ring" role="img" aria-label={`Đã hoàn thành ${progress}% lộ trình`} style={{'--progress': `${Math.max(0, Math.min(100, progress))}%`}}>
+            <div className="learning-ring-inner"><strong>{progress}%</strong><span>Hoàn thành</span></div>
+          </div>
+          <div className="learning-progress-info"><strong>{completed.length} / {lessons.length} bài học</strong><p>{completed.length === 0 ? 'Mỗi bài học hoàn thành là một bước tiến mới!' : `Bạn đã hoàn thành ${completed.length} bài. Tiếp tục phát huy nhé!`}</p><button className="learning-inline-link" onClick={() => onGo('Lộ trình học')}>Xem lộ trình <ArrowRight size={15}/></button></div>
+        </div>
+      </div>
+      <div className="learning-achievements-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">THÀNH TÍCH</span><h2>Hành trình chinh phục</h2></div><Award size={22}/></div>
+        <div className="learning-achievement-grid">
+          <div><BookOpen size={20}/><strong>{completed.length}</strong><span>Bài đã học</span></div>
+          <div><CheckCircle2 size={20}/><strong>{chapters.filter(c => lessons.filter(l => l.chapterId === c.id).every(l => completed.includes(l.id))).length}</strong><span>Chương hoàn thành</span></div>
+          <div><Award size={20}/><strong>{xp}</strong><span>XP tích lũy</span></div>
+          <div><RotateCcw size={20}/><strong>{wrongCount}</strong><span>Câu cần ôn tập</span></div>
+        </div>
+      </div>
+      <div className="learning-chapter-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">7 CHẶNG KIẾN THỨC</span><h2>Tiến độ theo chương</h2></div></div>
+        <div className="learning-chapter-list">{chapters.map(c => { const chapterLessons = lessons.filter(l => l.chapterId === c.id); const done = chapterLessons.filter(l => completed.includes(l.id)).length; const percent = chapterLessons.length ? Math.round(done / chapterLessons.length * 100) : 0; return <div className="learning-chapter-row" key={c.id}><div className="learning-chapter-title"><span>Chương {c.id}</span><strong>{done}/{chapterLessons.length}</strong></div><div className="learning-chapter-track"><span style={{width: `${percent}%`}}/></div></div>; })}</div>
+      </div>
+    </section>
     <div className="stats-grid"><StatCard icon={BookOpen} label="Bài đã hoàn thành" value={`${completed.length}/${lessons.length}`} detail={`${progress}% lộ trình`} tone="green"/><StatCard icon={Award} label="Điểm kinh nghiệm" value={xp} detail="XP tích lũy" tone="gold"/><StatCard icon={Target} label="Chặng học" value={`${chapters.filter(c => lessons.filter(l=>l.chapterId===c.id).every(l=>completed.includes(l.id))).length}/7`} detail="Chương hoàn thành" tone="purple"/><StatCard icon={RotateCcw} label="Cần ôn tập" value={wrongCount} detail="Câu trả lời sai đã lưu" tone="blue"/></div>
     <div className="section-heading"><div><div className="eyebrow">TIẾP TỤC HỌC</div><h2>Bài học tiếp theo</h2></div><button className="text-button" onClick={() => onGo('Bài học')}>Xem tất cả bài học <ArrowRight size={15}/></button></div>
     <div className="continue-card"><div className="continue-icon"><BookOpen size={24}/></div><div className="continue-body"><div className="lesson-meta">CHƯƠNG {nextLesson.chapterId} · {nextLesson.minutes} PHÚT</div><h3>{nextLesson.title}</h3><p>{nextLesson.description}</p><div className="continue-progress"><ProgressBar value={Math.round(lessons.filter(l=>l.chapterId===nextLesson.chapterId&&completed.includes(l.id)).length/lessons.filter(l=>l.chapterId===nextLesson.chapterId).length*100)}/><span>{Math.round(lessons.filter(l=>l.chapterId===nextLesson.chapterId&&completed.includes(l.id)).length/lessons.filter(l=>l.chapterId===nextLesson.chapterId).length*100)}% chương</span></div></div><button className="primary-button" onClick={() => onLesson(nextLesson)}>Học ngay <ArrowRight size={16}/></button></div>
