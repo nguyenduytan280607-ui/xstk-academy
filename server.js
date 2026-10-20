@@ -29,7 +29,7 @@ const allowedOrigins = (
   .map(origin => origin.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 const chapterNames = {
   '1': 'Bài 1: Xác suất và công thức tính xác suất',
