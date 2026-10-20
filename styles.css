@@ -160,3 +160,27 @@ body{background:#f4f7fc;color:#14264b}
 @media(max-width:1250px){.learning-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.learning-chapter-card{grid-column:1/-1}}
 @media(max-width:680px){.learning-overview{grid-template-columns:1fr}.learning-chapter-card{grid-column:auto}.learning-overview>div{padding:17px}.learning-ring{width:116px;height:116px}.learning-ring-inner{width:90px;height:90px}.learning-ring-inner strong{font-size:25px}}
 @media(max-width:370px){.learning-progress-body{gap:10px}.learning-ring{width:98px;height:98px}.learning-ring-inner{width:76px;height:76px}.learning-ring-inner strong{font-size:22px}}
+
+/* Phase 3 — Dashboard welcome and AI solver */
+.welcome-banner .welcome-copy h1{font-size:clamp(27px,2.45vw,39px);line-height:1.17;letter-spacing:-.035em}
+.welcome-banner .welcome-copy p{max-width:520px}
+.dashboard-ai-section{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,.85fr);gap:16px;margin:22px 0 30px}
+.dashboard-ai-panel,.dashboard-ai-side{background:#fff;border:1px solid #e1e8f2;border-radius:19px;box-shadow:0 10px 30px rgba(16,37,75,.045)}
+.dashboard-ai-panel{padding:24px}
+.dashboard-ai-header{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+.dashboard-ai-symbol{width:46px;height:46px;border-radius:14px;background:#c8102e;color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dashboard-ai-header h2{font-size:23px;line-height:1.25;margin:5px 0 5px;color:#10254b}
+.dashboard-ai-header p{margin:0;color:#687a96;font-size:13px}
+.dashboard-ai-label{display:block;color:#10254b;font-weight:750;font-size:13px;margin:0 0 9px}
+.dashboard-ai-panel textarea{display:block;box-sizing:border-box;width:100%;resize:vertical;min-height:120px;padding:15px 16px;border:1px solid #dbe4f0;border-radius:12px;background:#f7f9fd;color:#10254b;font:inherit;font-size:14px;line-height:1.65;outline:none}
+.dashboard-ai-panel textarea:focus{border-color:#c8102e;box-shadow:0 0 0 3px rgba(200,16,46,.1)}
+.dashboard-ai-panel textarea::placeholder{color:#8b9ab1}
+.dashboard-ai-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;flex-wrap:wrap}
+.dashboard-ai-actions span{display:flex;align-items:center;gap:7px;color:#647692;font-size:12px}
+.dashboard-ai-actions .primary-button:disabled{opacity:.55;cursor:not-allowed}
+.dashboard-ai-side{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:28px 24px;background:linear-gradient(150deg,#edf4ff,#fff 72%)}
+.dashboard-ai-side-icon{display:flex;align-items:center;justify-content:center;width:74px;height:74px;border-radius:24px;background:#10254b;color:#fff;box-shadow:0 12px 22px rgba(16,37,75,.14)}
+.dashboard-ai-side h3{font-size:20px;line-height:1.3;color:#10254b;margin:17px 0 8px}
+.dashboard-ai-side p{color:#687a96;line-height:1.7;font-size:13px;max-width:280px;margin:0 0 17px}
+@media(max-width:950px){.dashboard-ai-section{grid-template-columns:1fr}.dashboard-ai-side{padding:24px}}
+@media(max-width:600px){.dashboard-ai-panel{padding:17px}.dashboard-ai-header h2{font-size:20px}.dashboard-ai-actions .primary-button{width:100%;justify-content:center}}
