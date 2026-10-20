@@ -7,7 +7,7 @@ import {
 } from "firebase/ai";
 
 const firebaseConfig = {
-  apiKey: "HIDDEN",
+  apiKey: "AIzaSyAouztTUdBDj_0yBHnxahADgcU_7gyRdk8",
   authDomain: "xstk-academy.firebaseapp.com",
   projectId: "xstk-academy",
   storageBucket: "xstk-academy.firebasestorage.app",
