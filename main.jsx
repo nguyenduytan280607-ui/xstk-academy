@@ -4,7 +4,6 @@ import { Activity, ArrowRight, Award, BookOpen, Bookmark, Calculator, Check, Che
 import 'katex/dist/katex.min.css';
 import { chapters, lessons, questions } from './data';
 import './styles.css';
-
 const initial = () => { try { return JSON.parse(localStorage.getItem('xstk-state')) || {}; } catch { return {}; } };
 function App() {
   const [saved, setSaved] = useState(initial);
@@ -87,254 +86,54 @@ function LessonsPage({filteredLessons,query,setQuery,chapterFilter,setChapterFil
 function LessonRow({lesson,done,onClick}) { return <button className="lesson-row" onClick={onClick}><div className={`lesson-status ${done?'done':''}`}>{done?<Check size={16}/>:<BookOpen size={16}/>}</div><div className="lesson-row-main"><div className="lesson-meta">CHƯƠNG {lesson.chapterId} · BÀI {lesson.number}</div><h3>{lesson.title}</h3><p>{lesson.description}</p></div><div className="lesson-row-side"><span><Clock3 size={13}/>{lesson.minutes} phút</span><span className={`status-text ${done?'is-done':''}`}>{done?'Đã học':'Chưa học'}</span></div><ChevronRight className="row-chevron" size={17}/></button>; }
 function LessonView({lesson,completed,onBack,onComplete,onPractice}) { const [showHint,setShowHint]=useState(false);return <><button className="back-button" onClick={onBack}><ChevronRight size={15} className="back-arrow"/> Quay lại danh sách</button><div className="lesson-layout"><article className="lesson-article"><div className="eyebrow">CHƯƠNG {lesson.chapterId} · BÀI {lesson.number}</div><h1>{lesson.title}</h1><p className="article-lead">{lesson.description}</p><div className="article-meta"><span><Clock3 size={14}/>{lesson.minutes} phút đọc</span><span><Library size={14}/>{lesson.source}</span></div><div className="article-divider"/><h2>Mục tiêu bài học</h2><p>Sau bài này, bạn cần hiểu khái niệm, nhận diện dữ kiện trong đề và biết khi nào nên áp dụng công thức.</p><h2>Giải thích cốt lõi</h2><p>{lesson.content}</p><div className="lesson-detail-list"><div><strong>Điểm cần nhớ</strong><p>{lesson.note}</p></div><div><strong>Ví dụ / cách vận dụng</strong><p>{lesson.example}</p></div></div><div className="formula-box"><div className="formula-label"><Sigma size={17}/> CÔNG THỨC / QUY TẮC GHI NHỚ</div><div className="formula-text">{lesson.formula}</div><button className="small-outline" onClick={()=>navigator.clipboard?.writeText(lesson.formula)}><Bookmark size={14}/> Sao chép công thức</button></div><h2>Cách giải một bài tập</h2><div className="steps-list"><div><b>01</b><span><strong>Đọc đề và xác định dữ kiện</strong><small>Gạch chân các giá trị đã biết và đại lượng cần tìm.</small></span></div><div><b>02</b><span><strong>Chọn đúng công thức</strong><small>Kiểm tra điều kiện áp dụng, không chọn công thức chỉ vì thấy quen.</small></span></div><div><b>03</b><span><strong>Thay số và tính toán</strong><small>Viết từng bước để dễ phát hiện lỗi.</small></span></div><div><b>04</b><span><strong>Diễn giải kết quả</strong><small>Trả lời đúng câu hỏi bằng ngôn ngữ của bài toán.</small></span></div></div><div className="source-note"><CircleHelp size={17}/><span><strong>Nguồn nội dung</strong><br/>Khung chủ đề được tổ chức theo file tài liệu gốc. Phần khái niệm và công thức được biên soạn theo chủ đề của PDF. Các ví dụ diễn giải trên website là phần hỗ trợ học tập; khi có khác biệt ký hiệu, hãy ưu tiên quy ước trong tài liệu gốc.<br/><a className="source-pdf-link" href={`/tai-lieu/bai-${lesson.chapterId}-${({1:'xac-suat',2:'bien-ngau-nhien',3:'phan-phoi',4:'mau-ngau-nhien',5:'uoc-luong',6:'kiem-dinh',7:'so-sanh'})[lesson.chapterId]}.pdf`} target="_blank" rel="noreferrer">Mở PDF gốc Bài {lesson.chapterId} ↗</a></span></div><div className="article-actions"><button className="primary-button" onClick={onComplete}>{completed?<CheckCircle2 size={16}/>:<Check size={16}/>} {completed?'Đã hoàn thành':'Đánh dấu hoàn thành'}</button><button className="secondary-button" onClick={onPractice}>Luyện tập ngay <ArrowRight size={15}/></button></div></article><aside className="lesson-aside"><div className="aside-card"><div className="aside-title"><ListChecks size={17}/> Trong bài này</div><a href="#" onClick={e=>{e.preventDefault();document.querySelector('.formula-box')?.scrollIntoView({behavior:'smooth'})}}>Công thức cần nhớ</a><a href="#" onClick={e=>{e.preventDefault();document.querySelector('.steps-list')?.scrollIntoView({behavior:'smooth'})}}>Quy trình giải bài</a><div className="aside-separator"/><div className="aside-title"><Award size={17}/> Tiến độ bài học</div><div className="aside-progress"><ProgressBar value={completed?100:0}/><span>{completed?'100%':'0%'} hoàn thành</span></div></div><div className="aside-tip"><Sparkles size={18}/><strong>Mẹo học hiệu quả</strong><p>Hãy tự giải thích công thức bằng lời của bạn, sau đó làm một bài tập mà không nhìn lời giải.</p></div></aside></div></>; }
 function PracticePage({chosen,setChosen,submitted,setSubmitted,wrong,update,quizIndex,setQuizIndex}) { const [filter,setFilter]=useState('all'); const qs=questions.filter(q=>filter==='all'||q.chapterId===Number(filter)); const q=qs[Math.min(quizIndex,qs.length-1)]||qs[0]; const result=submitted[q?.id]; const answer=chosen[q?.id]; const choose=(idx)=>setChosen(p=>({...p,[q.id]:idx})); const submit=()=>{if(answer===undefined)return;setSubmitted(p=>({...p,[q.id]:true}));const isWrong=answer!==q.answer;const nextWrong=isWrong?[...new Set([...wrong,q.id])]:wrong.filter(id=>id!==q.id);update('wrong',nextWrong);};return <><PageHeading eyebrow="PHÒNG THỰC HÀNH" title="Luyện tập và kiểm tra" desc="Làm câu hỏi theo chủ đề, xem giải thích và lưu câu cần ôn tập."/><div className="practice-toolbar"><div><span className="eyebrow">NGÂN HÀNG CÂU HỎI</span><h3>{qs.length} câu hỏi mẫu</h3></div><select value={filter} onChange={e=>{setFilter(e.target.value);setQuizIndex(0)}}><option value="all">Tất cả chương</option>{chapters.map(c=><option key={c.id} value={c.id}>Chương {c.id}</option>)}</select></div>{q&&<div className="quiz-card"><div className="quiz-top"><span className="pill">CHƯƠNG {q.chapterId}</span><span className="difficulty">{q.difficulty}</span><span className="quiz-number">Câu {quizIndex+1}/{qs.length}</span></div><h2>{q.prompt}</h2><div className="answer-options">{q.options.map((opt,i)=><button key={opt} disabled={!!result} className={`answer-option ${answer===i?'selected':''} ${result&&i===q.answer?'correct':''} ${result&&answer===i&&i!==q.answer?'incorrect':''}`} onClick={()=>choose(i)}><span className="option-letter">{String.fromCharCode(65+i)}</span><span>{opt}</span>{result&&i===q.answer&&<CheckCircle2 size={18}/>}</button>)}</div>{result&&<div className={`explanation ${answer===q.answer?'good':'bad'}`}><strong>{answer===q.answer?'Chính xác!':'Chưa chính xác.'}</strong><p>{q.explanation}</p></div>}<div className="quiz-footer"><span>{result?'Đã ghi nhận kết quả':'Chọn một đáp án để tiếp tục'}</span>{!result?<button className="primary-button" disabled={answer===undefined} onClick={submit}>Kiểm tra đáp án <ArrowRight size={15}/></button>:<button className="primary-button" onClick={()=>{setQuizIndex((quizIndex+1)%qs.length)}}>Câu tiếp theo <ArrowRight size={15}/></button>}</div></div>}<div className="practice-bottom"><div><Target size={19}/><span><strong>Ôn tập có mục tiêu</strong><small>Câu trả lời sai được lưu để bạn có thể quay lại luyện tập.</small></span></div><div><strong>{wrong.length}</strong><span>câu cần ôn</span></div></div></>; }
-
 function SolvePage() {
-  const [problem, setProblem] = useState('');
-  const [chapter, setChapter] = useState('auto');
-  const [level, setLevel] = useState('chi-tiet');
-  const [answer, setAnswer] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
+  const [problem,setProblem]=useState('');
+  const [chapter,setChapter]=useState('auto');
+  const [level,setLevel]=useState('chi-tiet');
+  const [answer,setAnswer]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
   const solve = async () => {
     if (!problem.trim() || loading) return;
-
     setLoading(true);
     setError('');
     setAnswer('');
 
     try {
-      const response = await fetch(
-        'https://xstk-academy.onrender.com/api/solve',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            problem: problem.trim(),
-            chapter,
-            level
-          })
-        }
-      );
+      const response = await fetch('https://xstk-academy.onrender.com/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: problem.trim(),
+          chapter,
+          level
+        })
+      });
 
-      let data;
-
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error(
-          'Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.'
-        );
-      }
+      const data = await response.json().catch(() => {
+        throw new Error('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.');
+      });
 
       if (!response.ok) {
-        throw new Error(
-          data.error || 'Gemini không thể xử lý yêu cầu.'
-        );
+        throw new Error(data?.error || `Máy chủ AI gặp lỗi (${response.status}).`);
       }
 
-      if (!data.answer || typeof data.answer !== 'string') {
-        throw new Error(
-          'Gemini chưa trả về lời giải. Vui lòng thử lại.'
-        );
+      if (typeof data?.answer !== 'string' || !data.answer.trim()) {
+        throw new Error('Gemini chưa trả về lời giải. Vui lòng thử lại.');
       }
 
       setAnswer(data.answer);
-
     } catch (e) {
-      console.error('XSTK AI Solver:', e);
-
-      if (
-        e instanceof TypeError &&
-        e.message === 'Failed to fetch'
-      ) {
-        setError(
-          'Không thể kết nối đến máy chủ Render. ' +
-          'Vui lòng kiểm tra kết nối mạng và cấu hình CORS.'
-        );
-      } else {
-        setError(
-          e.message || 'Đã xảy ra lỗi. Vui lòng thử lại.'
-        );
-      }
-
+      setError(
+        e instanceof TypeError && e.message === 'Failed to fetch'
+          ? 'Không kết nối được máy chủ AI. Hãy kiểm tra mạng, Render và cấu hình FRONTEND_URL (CORS).'
+          : e?.message || 'Có lỗi khi giải bài. Vui lòng thử lại.'
+      );
     } finally {
       setLoading(false);
     }
   };
-
-  return (
-    <>
-      <PageHeading
-        eyebrow="TRỢ GIẢNG XSTK"
-        title="Giải bài tập từng bước"
-        desc="Nhập nguyên đề bài. Trợ giảng sẽ nhận diện dữ kiện, chọn công thức, trình bày phép tính và viết kết luận."
-      />
-
-      <div className="solver-layout">
-        <section className="solver-card">
-          <label htmlFor="problem-input">
-            Đề bài của bạn
-          </label>
-
-          <textarea
-            id="problem-input"
-            value={problem}
-            onChange={(e) => setProblem(e.target.value)}
-            rows={7}
-            placeholder="Ví dụ: Số lỗi trung bình là 6 lỗi/giờ. Tính xác suất có đúng 2 lỗi trong 10 phút theo phân phối Poisson..."
-          />
-
-          <div className="solver-controls">
-            <div>
-              <label htmlFor="chapter-select">
-                Chủ đề
-              </label>
-
-              <select
-                id="chapter-select"
-                value={chapter}
-                onChange={(e) => setChapter(e.target.value)}
-              >
-                <option value="auto">
-                  Tự nhận diện
-                </option>
-
-                {chapters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    Bài {c.id}: {c.short}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="level-select">
-                Cách trình bày
-              </label>
-
-              <select
-                id="level-select"
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
-              >
-                <option value="chi-tiet">
-                  Giải thích chi tiết
-                </option>
-
-                <option value="ngan-gon">
-                  Công thức và tính toán ngắn gọn
-                </option>
-
-                <option value="goi-y">
-                  Gợi ý từng bước, chưa đưa đáp án ngay
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            className="primary-button solver-submit"
-            onClick={solve}
-            disabled={!problem.trim() || loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner" />
-                Đang giải...
-              </>
-            ) : (
-              <>
-                <Sparkles size={16} />
-                Giải bài từng bước
-              </>
-            )}
-          </button>
-
-          <p className="solver-privacy">
-            Không nhập thông tin cá nhân. Kết quả do AI tạo
-            có thể sai; hãy đối chiếu điều kiện áp dụng
-            và tài liệu môn học.
-          </p>
-
-          {error && (
-            <div className="solver-error">
-              <strong>Chưa giải được</strong>
-              <p>{error}</p>
-            </div>
-          )}
-        </section>
-
-        <section className="solver-result">
-          <div className="solver-result-head">
-            <div className="solver-result-icon">
-              <Sigma size={20} />
-            </div>
-
-            <div>
-              <h2>Lời giải</h2>
-              <p>Các bước sẽ hiển thị tại đây</p>
-            </div>
-          </div>
-
-          {answer ? (
-            <div className="solver-answer">
-              {answer.split('\n').map((line, i) =>
-                line.trim() ? (
-                  <p key={i}>{line}</p>
-                ) : (
-                  <div
-                    key={i}
-                    className="answer-spacer"
-                  />
-                )
-              )}
-            </div>
-          ) : (
-            <div className="solver-empty">
-              <div className="solver-empty-icon">
-                <NotebookPen size={25} />
-              </div>
-
-              <strong>
-                Hãy bắt đầu từ đề bài
-              </strong>
-
-              <p>
-                Một lời giải tốt cần chỉ ra dữ kiện,
-                tham số cần tìm, công thức phù hợp,
-                thay số và kết luận theo đúng ngữ cảnh.
-              </p>
-
-              <div className="solver-checklist">
-                <span>
-                  <CheckCircle2 size={15} />
-                  Xác định dạng toán
-                </span>
-
-                <span>
-                  <CheckCircle2 size={15} />
-                  Nêu công thức và điều kiện
-                </span>
-
-                <span>
-                  <CheckCircle2 size={15} />
-                  Tính toán theo từng bước
-                </span>
-
-                <span>
-                  <CheckCircle2 size={15} />
-                  Kết luận dễ hiểu
-                </span>
-              </div>
-            </div>
-          )}
-        </section>
-      </div>
-    </>
-  );
+  return <><PageHeading eyebrow="TRỢ GIẢNG XSTK" title="Giải bài tập từng bước" desc="Nhập nguyên đề bài. Trợ giảng sẽ nhận diện dữ kiện, chọn công thức, trình bày phép tính và viết kết luận."/><div className="solver-layout"><section className="solver-card"><label htmlFor="problem-input">Đề bài của bạn</label><textarea id="problem-input" value={problem} onChange={e=>setProblem(e.target.value)} rows={7} placeholder="Ví dụ: Số lỗi trung bình là 6 lỗi/giờ. Tính xác suất có đúng 2 lỗi trong 10 phút theo phân phối Poisson..."/><div className="solver-controls"><div><label htmlFor="chapter-select">Chủ đề</label><select id="chapter-select" value={chapter} onChange={e=>setChapter(e.target.value)}><option value="auto">Tự nhận diện</option>{chapters.map(c=><option key={c.id} value={c.id}>Bài {c.id}: {c.short}</option>)}</select></div><div><label htmlFor="level-select">Cách trình bày</label><select id="level-select" value={level} onChange={e=>setLevel(e.target.value)}><option value="chi-tiet">Giải thích chi tiết</option><option value="ngan-gon">Công thức và tính toán ngắn gọn</option><option value="goi-y">Gợi ý từng bước, chưa đưa đáp án ngay</option></select></div></div><button className="primary-button solver-submit" onClick={solve} disabled={!problem.trim()||loading}>{loading?<><span className="spinner"/> Đang giải...</>:<><Sparkles size={16}/> Giải bài từng bước</>}</button><p className="solver-privacy">Không nhập thông tin cá nhân. Kết quả do AI tạo có thể sai; hãy đối chiếu điều kiện áp dụng và tài liệu môn học.</p>{error&&<div className="solver-error"><strong>Chưa giải được</strong><p>{error}</p></div>}</section><section className="solver-result"><div className="solver-result-head"><div className="solver-result-icon"><Sigma size={20}/></div><div><h2>Lời giải</h2><p>Các bước sẽ hiển thị tại đây</p></div></div>{answer?<div className="solver-answer">{answer.split('\n').map((line,i)=>line.trim()?<p key={i}>{line}</p>:<div key={i} className="answer-spacer"/>)}</div>:<div className="solver-empty"><div className="solver-empty-icon"><NotebookPen size={25}/></div><strong>Hãy bắt đầu từ đề bài</strong><p>Một lời giải tốt cần chỉ ra dữ kiện, tham số cần tìm, công thức phù hợp, thay số và kết luận theo đúng ngữ cảnh.</p><div className="solver-checklist"><span><CheckCircle2 size={15}/> Xác định dạng toán</span><span><CheckCircle2 size={15}/> Nêu công thức và điều kiện</span><span><CheckCircle2 size={15}/> Tính toán theo từng bước</span><span><CheckCircle2 size={15}/> Kết luận dễ hiểu</span></div></div>}</section></div></>;
 }
 
 function ReviewPage({wrong,onPractice}) { const wrongQs=questions.filter(q=>wrong.includes(q.id));return <><PageHeading eyebrow="ÔN TẬP THÔNG MINH" title="Câu sai cần ôn tập" desc="Tập trung vào câu hỏi bạn đã trả lời chưa đúng." action={<button className="primary-button" onClick={onPractice}>Luyện tập <ArrowRight size={15}/></button>}/>{wrongQs.length?<div className="review-list">{wrongQs.map(q=><div className="review-card" key={q.id}><div className="review-icon"><RotateCcw size={17}/></div><div><span className="lesson-meta">CHƯƠNG {q.chapterId} · {q.topic}</span><h3>{q.prompt}</h3><p>{q.explanation}</p></div></div>)}</div>:<div className="empty-state"><CheckCircle2 size={28}/><strong>Chưa có câu sai cần ôn</strong><span>Hãy làm bài trong Phòng thực hành. Câu trả lời sai sẽ xuất hiện ở đây.</span><button className="primary-button" onClick={onPractice}>Bắt đầu luyện tập <ArrowRight size={15}/></button></div>}</>; }
