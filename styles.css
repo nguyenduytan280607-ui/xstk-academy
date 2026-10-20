@@ -184,3 +184,7 @@ body{background:#f4f7fc;color:#14264b}
 .dashboard-ai-side p{color:#687a96;line-height:1.7;font-size:13px;max-width:280px;margin:0 0 17px}
 @media(max-width:950px){.dashboard-ai-section{grid-template-columns:1fr}.dashboard-ai-side{padding:24px}}
 @media(max-width:600px){.dashboard-ai-panel{padding:17px}.dashboard-ai-header h2{font-size:20px}.dashboard-ai-actions .primary-button{width:100%;justify-content:center}}
+
+/* HUB brand logo */
+.brand-mark{overflow:hidden;display:flex;align-items:center;justify-content:center;padding:3px}
+.hub-brand-logo{display:block;width:100%;height:100%;object-fit:contain}

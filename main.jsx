@@ -42,7 +42,7 @@ function App() {
 
   return <div className="app-shell">
     <aside className={`sidebar ${showMobileNav ? 'mobile-open' : ''}`}>
-      <div className="brand"><div className="brand-mark"><Sigma size={25}/></div><div><strong>XSTK</strong><span>ACADEMY</span></div><button className="mobile-close icon-button" onClick={() => setShowMobileNav(false)}><X size={18}/></button></div>
+      <div className="brand"><div className="brand-mark"><img src="/hub-logo.png" alt="Logo Trường Đại học Ngân hàng TP.HCM" className="hub-brand-logo"/></div><div><strong>XSTK</strong><span>ACADEMY</span></div><button className="mobile-close icon-button" onClick={() => setShowMobileNav(false)}><X size={18}/></button></div>
       <button className="search-box" onClick={() => setSearchOpen(!searchOpen)}><Search size={16}/><span>Tìm kiếm bài học...</span><kbd>⌘ K</kbd></button>
       {searchOpen && <div className="sidebar-search"><input autoFocus value={query} onChange={e => {setQuery(e.target.value); setPage('Bài học')}} placeholder="Tên bài học, công thức..."/><button onClick={() => setSearchOpen(false)}><X size={15}/></button></div>}
       <div className="nav-label">KHÔNG GIAN HỌC TẬP</div>
