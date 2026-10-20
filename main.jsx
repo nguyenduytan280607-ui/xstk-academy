@@ -4,7 +4,7 @@ import { Activity, ArrowRight, Award, BookOpen, Bookmark, Calculator, Check, Che
 import 'katex/dist/katex.min.css';
 import { chapters, lessons, questions } from './data';
 import './styles.css';
-
+import { model } from "./firebase.js";
 const initial = () => { try { return JSON.parse(localStorage.getItem('xstk-state')) || {}; } catch { return {}; } };
 function App() {
   const [saved, setSaved] = useState(initial);
@@ -98,11 +98,37 @@ function SolvePage() {
     if(!problem.trim()) return;
     setLoading(true);setError('');setAnswer('');
     try {
-      const apiBase=(import.meta.env.VITE_API_URL || '').replace(/\/$/,'');
-      const res=await fetch(`${apiBase}/api/solve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problem:problem.trim(),chapter,level})});
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||'Không thể giải bài lúc này.');
-      setAnswer(data.answer||'Chưa nhận được lời giải.');
+      
+const prompt = `
+Bạn là trợ giảng môn Xác suất thống kê.
+
+Hãy giải bài toán sau bằng tiếng Việt:
+
+${problem.trim()}
+
+Chủ đề: ${chapter}
+Cách trình bày: ${level}
+
+Yêu cầu:
+1. Xác định dữ kiện đề bài.
+2. Xác định yêu cầu cần tìm.
+3. Chọn công thức phù hợp và giải thích.
+4. Thay số, tính toán từng bước.
+5. Đưa ra đáp án cuối cùng.
+6. Giải thích ý nghĩa kết quả.
+
+Không tự đặt thêm dữ kiện nếu đề bài chưa đầy đủ.
+`;
+
+const result = await model.generateContent(prompt);
+const answer = result.response.text();
+
+if (!answer) {
+  throw new Error("Gemini chưa trả về lời giải.");
+}
+
+setAnswer(answer);
+
     } catch(e) {
       setError(e.message==='Failed to fetch'?'Chưa kết nối được máy chủ giải bài. Hãy kiểm tra API đang chạy và cấu hình địa chỉ máy chủ trên website.':e.message);
     } finally {setLoading(false);}
