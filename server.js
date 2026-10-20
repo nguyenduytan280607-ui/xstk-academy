@@ -15,13 +15,18 @@ const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(x => x.trim()).filter(Boolean);
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+const normalizedOrigin = origin?.trim().replace(/\/$/, '');
+
+if (normalizedOrigin && allowedOrigins.includes(normalizedOrigin)) {
+  res.setHeader('Access-Control-Allow-Origin', normalizedOrigin);
+  res.setHeader('Vary', 'Origin');
+}res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+
+if (req.method === 'OPTIONS') {
+  res.writeHead(204);
+  return res.end();
+}
   if (req.method !== 'POST' || req.url !== '/api/solve') { res.writeHead(404, {'Content-Type':'application/json'}); return res.end(JSON.stringify({error:'Không tìm thấy API.'})); }
   let raw='';
   req.on('data', chunk => { raw += chunk; if (raw.length > 30000) req.destroy(); });
