@@ -150,6 +150,28 @@ function SolvePage() {
   </ReactMarkdown>
 </div>
 
+: <div className="solver-empty">
+    <div className="solver-empty-icon">
+      <NotebookPen size={25}/>
+    </div>
+    <strong>Hãy bắt đầu từ đề bài</strong>
+    <p>
+      Một lời giải tốt cần chỉ ra dữ kiện,
+      tham số cần tìm, công thức phù hợp,
+      thay số và kết luận theo đúng ngữ cảnh.
+    </p>
+    <div className="solver-checklist">
+      <span><CheckCircle2 size={15}/> Xác định dạng toán</span>
+      <span><CheckCircle2 size={15}/> Nêu công thức và điều kiện</span>
+      <span><CheckCircle2 size={15}/> Tính toán theo từng bước</span>
+      <span><CheckCircle2 size={15}/> Kết luận dễ hiểu</span>
+    </div>
+  </div>}
+</section>
+</div>
+</>;
+}
+
 :<div className="solver-empty">
   <div className="solver-empty-icon">
     <NotebookPen size={25}/>
