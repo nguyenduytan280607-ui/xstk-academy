@@ -21,6 +21,11 @@ if (existsSync(envPath)) {
 
 const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
 
+// Model Groq mặc định.
+// Có thể đổi bằng biến GROQ_MODEL trên Render.
+const GROQ_MODEL =
+  process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+
 const allowedOrigins = (
   process.env.FRONTEND_URL ||
   'http://localhost:5173,http://127.0.0.1:5173'
@@ -28,8 +33,6 @@ const allowedOrigins = (
   .split(',')
   .map(origin => origin.trim().replace(/\/$/, ''))
   .filter(Boolean);
-
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 const chapterNames = {
   '1': 'Bài 1: Xác suất và công thức tính xác suất',
@@ -42,8 +45,11 @@ const chapterNames = {
 };
 
 function sendJSON(res, status, data) {
+  if (res.writableEnded || res.destroyed) return;
+
   res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
   });
 
   res.end(JSON.stringify(data));
@@ -56,17 +62,20 @@ function createPrompt(body, problem) {
         'Tự nhận diện chương phù hợp'
       : 'Tự nhận diện trong 7 bài Xác suất thống kê';
 
-  let level = 'Giải thích chi tiết, dễ hiểu cho sinh viên mới học.';
+  let level =
+    'Giải thích chi tiết, dễ hiểu cho sinh viên mới học.';
 
   if (body.level === 'ngan-gon') {
-    level = 'Trình bày ngắn gọn nhưng đủ công thức và phép tính.';
+    level =
+      'Trình bày ngắn gọn nhưng đủ công thức và phép tính.';
   } else if (body.level === 'goi-y') {
     level =
       'Chỉ đưa gợi ý theo từng bước, không tiết lộ kết quả cuối cùng ngay; đặt câu hỏi gợi mở khi thích hợp.';
   }
 
   const system = `
-Bạn là trợ giảng môn Xác suất thống kê (XSTK), dạy bằng tiếng Việt.
+Bạn là trợ giảng môn Xác suất thống kê (XSTK),
+dạy bằng tiếng Việt.
 
 Chương học: ${chapter}
 Yêu cầu trình bày: ${level}
@@ -77,13 +86,18 @@ Nguyên tắc:
 3. Nêu mô hình hoặc phân phối xác suất và điều kiện áp dụng.
 4. Viết công thức ký hiệu trước, thay số sau.
 5. Tính toán rõ ràng và ghi đơn vị.
-6. Với kiểm định giả thuyết, nêu H0, H1, alpha, thống kê kiểm định,
-   miền bác bỏ hoặc quy tắc p-value và kết luận theo ngữ cảnh.
-7. Không bác bỏ H0 không có nghĩa là chứng minh H0 đúng.
-8. Với khoảng ước lượng, nêu độ tin cậy và phân phối tới hạn.
-9. Nếu đề thiếu dữ kiện, chỉ rõ phần thiếu và giải theo giả định
-   được ghi rõ.
+6. Với kiểm định giả thuyết, nêu H0, H1, alpha,
+   thống kê kiểm định, miền bác bỏ hoặc quy tắc
+   p-value và kết luận theo ngữ cảnh.
+7. Không bác bỏ H0 không có nghĩa là chứng minh
+   H0 đúng.
+8. Với khoảng ước lượng, nêu độ tin cậy
+   và phân phối tới hạn.
+9. Nếu đề thiếu dữ kiện, chỉ rõ phần thiếu
+   và giải theo giả định được ghi rõ.
 10. Phân biệt dữ kiện đề cho và nội dung suy luận.
+11. Kiểm tra lại phép tính trước khi kết luận.
+12. Ưu tiên cách giải phù hợp với sinh viên mới học.
 
 Định dạng lời giải:
 - Nhận diện đề
@@ -104,17 +118,49 @@ const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
   const normalizedOrigin = origin?.trim().replace(/\/$/, '');
 
-  if (normalizedOrigin && allowedOrigins.includes(normalizedOrigin)) {
-    res.setHeader('Access-Control-Allow-Origin', normalizedOrigin);
+  if (
+    normalizedOrigin &&
+    allowedOrigins.includes(normalizedOrigin)
+  ) {
+    res.setHeader(
+      'Access-Control-Allow-Origin',
+      normalizedOrigin
+    );
     res.setHeader('Vary', 'Origin');
   }
 
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type'
+  );
+
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'POST, OPTIONS'
+  );
+
+  // Từ chối origin không được cho phép.
+  if (
+    normalizedOrigin &&
+    !allowedOrigins.includes(normalizedOrigin)
+  ) {
+    return sendJSON(res, 403, {
+      error: 'Nguồn truy cập không được cho phép.'
+    });
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     return res.end();
+  }
+
+  // Endpoint kiểm tra backend.
+  if (req.method === 'GET' && req.url === '/health') {
+    return sendJSON(res, 200, {
+      status: 'ok',
+      provider: 'groq',
+      model: GROQ_MODEL
+    });
   }
 
   if (req.method !== 'POST' || req.url !== '/api/solve') {
@@ -127,11 +173,16 @@ const server = http.createServer(async (req, res) => {
   let tooLarge = false;
 
   req.on('data', chunk => {
-    raw += chunk;
+    if (tooLarge) return;
 
-    if (raw.length > 30000) {
+    raw += chunk.toString('utf8');
+
+    if (Buffer.byteLength(raw, 'utf8') > 30000) {
       tooLarge = true;
-      req.destroy();
+
+      sendJSON(res, 413, {
+        error: 'Dữ liệu gửi lên quá lớn.'
+      });
     }
   });
 
@@ -149,6 +200,16 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body)
+      ) {
+        return sendJSON(res, 400, {
+          error: 'Dữ liệu yêu cầu không hợp lệ.'
+        });
+      }
+
       const problem = String(body.problem || '').trim();
 
       if (!problem) {
@@ -159,55 +220,58 @@ const server = http.createServer(async (req, res) => {
 
       if (problem.length > 12000) {
         return sendJSON(res, 413, {
-          error: 'Đề bài quá dài. Vui lòng rút gọn dưới 12.000 ký tự.'
+          error:
+            'Đề bài quá dài. Vui lòng rút gọn dưới 12.000 ký tự.'
         });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      // Sử dụng Groq API Key thay cho Gemini.
+      const apiKey = process.env.GROQ_API_KEY;
 
       if (!apiKey) {
         return sendJSON(res, 503, {
-          error: 'Backend chưa được cấu hình GEMINI_API_KEY.'
+          error:
+            'Backend chưa được cấu hình GROQ_API_KEY.'
         });
       }
 
-      const { system, problem: userProblem } = createPrompt(
-        body,
-        problem
-      );
+      const {
+        system,
+        problem: userProblem
+      } = createPrompt(body, problem);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+
+      const timeout = setTimeout(() => {
+        controller.abort();
+      }, 60000);
 
       let response;
 
       try {
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
+          'https://api.groq.com/openai/v1/chat/completions',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
+              Authorization: `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              systemInstruction: {
-                parts: [
-                  { text: system }
-                ]
-              },
-              contents: [
+              model: GROQ_MODEL,
+              messages: [
+                {
+                  role: 'system',
+                  content: system
+                },
                 {
                   role: 'user',
-                  parts: [
-                    { text: userProblem }
-                  ]
+                  content: userProblem
                 }
               ],
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 4096
-              }
+              temperature: 0.2,
+              max_completion_tokens: 4096,
+              stream: false
             }),
             signal: controller.signal
           }
@@ -216,36 +280,57 @@ const server = http.createServer(async (req, res) => {
         clearTimeout(timeout);
       }
 
-      const data = await response.json();
+      let data;
+
+      try {
+        data = await response.json();
+      } catch {
+        return sendJSON(res, 502, {
+          error:
+            'Groq trả về dữ liệu không đúng định dạng.'
+        });
+      }
 
       if (!response.ok) {
         const message =
           data?.error?.message ||
-          'Gemini API trả về lỗi không xác định.';
+          'Groq API trả về lỗi không xác định.';
 
-        console.error('Gemini API error:', response.status, message);
-
-        return sendJSON(
-          res,
-          response.status === 429 ? 429 : 502,
-          {
-            error:
-              response.status === 429
-                ? 'Gemini đã đạt giới hạn lượt sử dụng. Vui lòng thử lại sau.'
-                : `Gemini API: ${message}`
-          }
+        console.error(
+          'Groq API error:',
+          response.status,
+          message
         );
+
+        if (response.status === 429) {
+          return sendJSON(res, 429, {
+            error:
+              'Groq đã đạt giới hạn sử dụng miễn phí. Vui lòng thử lại sau.'
+          });
+        }
+
+        if (
+          response.status === 401 ||
+          response.status === 403
+        ) {
+          return sendJSON(res, 502, {
+            error:
+              'Groq từ chối xác thực hoặc quyền truy cập API. Vui lòng kiểm tra cấu hình Render.'
+          });
+        }
+
+        return sendJSON(res, 502, {
+          error: `Groq API: ${message}`
+        });
       }
 
-      const answer = (data?.candidates?.[0]?.content?.parts || [])
-        .filter(part => typeof part.text === 'string')
-        .map(part => part.text)
-        .join('\n')
-        .trim();
+      const answer =
+        data?.choices?.[0]?.message?.content?.trim();
 
       if (!answer) {
         return sendJSON(res, 502, {
-          error: 'Gemini chưa trả về lời giải. Hãy thử lại.'
+          error:
+            'Groq chưa trả về lời giải. Hãy thử lại.'
         });
       }
 
@@ -258,7 +343,8 @@ const server = http.createServer(async (req, res) => {
 
       if (error?.name === 'AbortError') {
         return sendJSON(res, 504, {
-          error: 'Gemini phản hồi quá lâu. Vui lòng thử lại.'
+          error:
+            'Groq phản hồi quá lâu. Vui lòng thử lại.'
         });
       }
 
@@ -270,6 +356,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`XSTK Academy API đang chạy trên cổng ${PORT}`);
-  console.log(`Gemini model: ${GEMINI_MODEL}`);
+  console.log(
+    `XSTK Academy API đang chạy trên cổng ${PORT}`
+  );
+
+  console.log(
+    `AI provider: Groq | Model: ${GROQ_MODEL}`
+  );
 });
