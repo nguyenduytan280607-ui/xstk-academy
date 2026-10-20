@@ -150,7 +150,26 @@ function SolvePage() {
   </ReactMarkdown>
 </div>
 
-
+:<div className="solver-empty">
+  <div className="solver-empty-icon">
+    <NotebookPen size={25}/>
+  </div>
+  <strong>Hãy bắt đầu từ đề bài</strong>
+  <p>
+    Một lời giải tốt cần chỉ ra dữ kiện, tham số cần tìm,
+    công thức phù hợp, thay số và kết luận theo đúng ngữ cảnh.
+  </p>
+  <div className="solver-checklist">
+    <span><CheckCircle2 size={15}/> Xác định dạng toán</span>
+    <span><CheckCircle2 size={15}/> Nêu công thức và điều kiện</span>
+    <span><CheckCircle2 size={15}/> Tính toán theo từng bước</span>
+    <span><CheckCircle2 size={15}/> Kết luận dễ hiểu</span>
+  </div>
+</div>}
+</section>
+</div>
+</>;
+}
 function ReviewPage({wrong,onPractice}) { const wrongQs=questions.filter(q=>wrong.includes(q.id));return <><PageHeading eyebrow="ÔN TẬP THÔNG MINH" title="Câu sai cần ôn tập" desc="Tập trung vào câu hỏi bạn đã trả lời chưa đúng." action={<button className="primary-button" onClick={onPractice}>Luyện tập <ArrowRight size={15}/></button>}/>{wrongQs.length?<div className="review-list">{wrongQs.map(q=><div className="review-card" key={q.id}><div className="review-icon"><RotateCcw size={17}/></div><div><span className="lesson-meta">CHƯƠNG {q.chapterId} · {q.topic}</span><h3>{q.prompt}</h3><p>{q.explanation}</p></div></div>)}</div>:<div className="empty-state"><CheckCircle2 size={28}/><strong>Chưa có câu sai cần ôn</strong><span>Hãy làm bài trong Phòng thực hành. Câu trả lời sai sẽ xuất hiện ở đây.</span><button className="primary-button" onClick={onPractice}>Bắt đầu luyện tập <ArrowRight size={15}/></button></div>}</>; }
 function NotesPage({notes,note,setNote,activeNote,setActiveNote,update}) { const add=()=>{if(!note.trim())return;update('notes',[{id:Date.now(),text:note.trim(),createdAt:new Date().toLocaleDateString('vi-VN')},...notes]);setNote('');};const remove=(id)=>update('notes',notes.filter(n=>n.id!==id));return <><PageHeading eyebrow="GÓC GHI NHỚ" title="Sổ tay công thức" desc="Lưu lại công thức, lưu ý và cách giải do chính bạn ghi chép."/><div className="notes-layout"><div className="note-editor"><label htmlFor="note">Ghi chú mới</label><textarea id="note" value={note} onChange={e=>setNote(e.target.value)} placeholder="Ví dụ: Khi dùng Poisson, cần đổi λ theo độ dài khoảng thời gian..."/><div className="note-editor-footer"><span>{note.length} ký tự</span><button className="primary-button" onClick={add} disabled={!note.trim()}>Lưu ghi chú <Bookmark size={15}/></button></div></div><div className="notes-list"><div className="section-heading compact"><h2>Ghi chú của bạn <span className="count-badge">{notes.length}</span></h2></div>{notes.length?notes.map(n=><div className="saved-note" key={n.id}><div className="saved-note-top"><span><NotebookPen size={14}/>{n.createdAt}</span><button className="icon-button" onClick={()=>remove(n.id)} aria-label="Xóa ghi chú"><X size={15}/></button></div><p>{n.text}</p></div>):<div className="empty-state small-empty"><NotebookPen size={23}/><strong>Chưa có ghi chú</strong><span>Ghi lại công thức hoặc điều bạn hay nhầm.</span></div>}</div></div></>; }
 function StatsPage({completed,xp,attempts}) { const byChapter=chapters.map(c=>{const ls=lessons.filter(l=>l.chapterId===c.id);return {...c,done:ls.filter(l=>completed.includes(l.id)).length,total:ls.length}});return <><PageHeading eyebrow="BÁO CÁO TIẾN BỘ" title="Thống kê kết quả học" desc="Theo dõi mức độ hoàn thành các chương trong hành trình XSTK."/><div className="stats-grid stats-grid-wide"><StatCard icon={BookOpen} label="Bài hoàn thành" value={completed.length} detail={`trên tổng ${lessons.length} bài`} tone="green"/><StatCard icon={Award} label="XP tích lũy" value={xp} detail="Điểm kinh nghiệm" tone="gold"/><StatCard icon={Activity} label="Chương đang học" value={byChapter.filter(c=>c.done>0&&c.done<c.total).length} detail="Đã bắt đầu nhưng chưa xong" tone="purple"/></div><div className="panel"><div className="section-heading compact"><h2>Tiến độ theo chương</h2></div><div className="chapter-progress-list">{byChapter.map(c=><div className="chapter-progress-row" key={c.id}><div className="chapter-progress-label"><span>Chương {c.id}</span><strong>{c.short}</strong></div><ProgressBar value={c.done/c.total*100}/><span className="progress-number">{c.done}/{c.total}</span></div>)}</div></div><div className="source-note stats-note"><CircleHelp size={17}/><span>Độ chính xác và thời gian làm bài sẽ được bổ sung khi hệ thống lưu kết quả chi tiết cho từng lượt làm. Bản hiện tại ưu tiên tiến độ bài học và điểm XP cơ bản.</span></div></>; }
