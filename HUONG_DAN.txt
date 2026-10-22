@@ -1,10 +1,18 @@
-XSTK Academy — Phòng thực hành 2.0
+XSTK Academy — Phòng thực hành 2.1: Thi kết hợp trắc nghiệm + tự luận
 
-Chỉ cập nhật main.jsx và styles.css trong cùng thư mục hiện tại trên GitHub.
-KHÔNG thay data.js, server.js, hình ảnh hoặc dữ liệu localStorage.
-Các câu hỏi hiện tại lấy trực tiếp từ data.js; bộ dữ liệu hiện có 12 câu.
+1. Trên GitHub repository xstk-academy, thay main.jsx và styles.css bằng 2 file trong ZIP.
+2. Giữ nguyên data.js, server.js, package.json, các ảnh và các file PDF.
+3. Commit changes; kiểm tra Vercel Deployments > Build Logs nếu deployment báo Error.
+4. Vào Phòng thực hành > Chế độ > Thi kết hợp (trắc nghiệm + tự luận).
+5. Chọn chương, độ khó, số câu trắc nghiệm (0/3/5/10/15/20), số câu tự luận (0/1/2/3/5/10), thời gian (15-120 phút).
+6. Tạo đề, làm bài, nộp bài, xem chấm điểm và nhận xét từng câu.
 
-Kiểm tra: Chọn đáp án trong Luyện tập -> Kiểm tra -> Giải thích -> Ôn câu sai; đổi sang Thi thử -> trả lời -> Nộp bài -> xem kết quả; thử phím A/B/C/D và Enter.
-Kết quả thi thử lưu riêng trong localStorage key xstk-practice-exams-v2, không thay đổi xstk-state.
-Thời gian thi thử 10/15/30 phút, đồng hồ theo thời gian thực khi tab đang mở. Nếu tải lại trang, phiên thi hiện tại không được phục hồi.
-Chưa thể xác minh triển khai Vercel trực tiếp từ môi trường này.
+LƯU Ý:
+- Chế độ mới gọi API hiện có trên Render: POST /api/practice/generate và POST /api/grade.
+- Nếu backend chưa có /api/practice/generate hoặc /api/grade, chức năng tạo đề/chấm tự luận KHÔNG hoạt động. Không được xem đây là tính năng đã kiểm thử end-to-end.
+- AI được yêu cầu trả về dòng "Điểm: X/10". Nếu không trả điểm hợp lệ, bài tự luận được đánh dấu 'Chưa chấm được', không tự suy diễn điểm.
+- Mỗi câu tính tối đa 10 điểm; điểm tổng là trung bình tất cả câu khi chấm đủ.
+- Đề thi mới lấy câu từ AI, không ghi đè 12 câu hỏi có sẵn trong data.js.
+- Lịch sử chấm được lưu tách biệt trong localStorage xstk-mixed-exams-v1; không ghi đè xstk-state.
+- Khi reload giữa phiên thi, bài làm hiện tại chưa được khôi phục.
+- Chưa chạy được build Vite hoặc kiểm thử kết nối API thực tế tại môi trường tạo file.
