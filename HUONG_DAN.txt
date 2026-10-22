@@ -1,0 +1,10 @@
+XSTK Academy — Phòng thực hành 2.0
+
+Chỉ cập nhật main.jsx và styles.css trong cùng thư mục hiện tại trên GitHub.
+KHÔNG thay data.js, server.js, hình ảnh hoặc dữ liệu localStorage.
+Các câu hỏi hiện tại lấy trực tiếp từ data.js; bộ dữ liệu hiện có 12 câu.
+
+Kiểm tra: Chọn đáp án trong Luyện tập -> Kiểm tra -> Giải thích -> Ôn câu sai; đổi sang Thi thử -> trả lời -> Nộp bài -> xem kết quả; thử phím A/B/C/D và Enter.
+Kết quả thi thử lưu riêng trong localStorage key xstk-practice-exams-v2, không thay đổi xstk-state.
+Thời gian thi thử 10/15/30 phút, đồng hồ theo thời gian thực khi tab đang mở. Nếu tải lại trang, phiên thi hiện tại không được phục hồi.
+Chưa thể xác minh triển khai Vercel trực tiếp từ môi trường này.
