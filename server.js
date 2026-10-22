@@ -26,6 +26,29 @@ const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
 const GROQ_MODEL =
   process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
+// Model dùng riêng cho ảnh. Có thể đổi trên Render nếu Groq thay danh sách model.
+const GROQ_VISION_MODEL =
+  process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const MAX_IMAGES = 3;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+function validateImages(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > MAX_IMAGES) {
+    throw new Error('Chỉ hỗ trợ tối đa 3 ảnh/trang PDF.');
+  }
+  return value.map((item, index) => {
+    if (typeof item !== 'string') throw new Error(`Ảnh ${index + 1} không hợp lệ.`);
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(item);
+    if (!match) throw new Error(`Ảnh ${index + 1} phải là JPG, PNG hoặc WebP dạng base64.`);
+    const bytes = Buffer.byteLength(match[2], 'base64');
+    if (bytes < 1 || bytes > MAX_IMAGE_BYTES) {
+      throw new Error(`Ảnh ${index + 1} vượt giới hạn 4 MB sau chuyển đổi.`);
+    }
+    return item;
+  });
+}
+
 const allowedOrigins = (
   process.env.FRONTEND_URL ||
   'http://localhost:5173,http://127.0.0.1:5173'
@@ -39,9 +62,9 @@ const chapterNames = {
   '2': 'Bài 2: Biến ngẫu nhiên',
   '3': 'Bài 3: Các phân phối xác suất thông dụng',
   '4': 'Bài 4: Mẫu ngẫu nhiên và các số đặc trưng mẫu',
-  '5': 'Bài 5: Ước lượng khoảng',
-  '6': 'Bài 6: Kiểm định giả thiết trong thống kê',
-  '7': 'Bài 7: So sánh các tham số'
+  '5': 'Ước lượng khoảng',
+  '6': 'Kiểm định giả thiết trong thống kê',
+  '7': 'So sánh các tham số'
 };
 
 function sendJSON(res, status, data) {
@@ -159,7 +182,8 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, {
       status: 'ok',
       provider: 'groq',
-      model: GROQ_MODEL
+      model: GROQ_MODEL,
+      visionModel: GROQ_VISION_MODEL
     });
   }
 
@@ -177,7 +201,7 @@ const server = http.createServer(async (req, res) => {
 
     raw += chunk.toString('utf8');
 
-   if (Buffer.byteLength(raw, 'utf8') > 20 * 1024 * 1024) {
+    if (Buffer.byteLength(raw, 'utf8') > 20 * 1024 * 1024) {
       tooLarge = true;
 
       sendJSON(res, 413, {
@@ -210,9 +234,16 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const problem = String(body.problem || '').trim();
+      let images;
+      try {
+        images = validateImages(body.images);
+      } catch (error) {
+        return sendJSON(res, 400, { error: error.message });
+      }
 
-      if (!problem) {
+      const problem = typeof body.problem === 'string' ? body.problem.trim() : '';
+
+      if (!problem && images.length === 0) {
         return sendJSON(res, 400, {
           error: 'Vui lòng nhập đề bài.'
         });
@@ -240,6 +271,14 @@ const server = http.createServer(async (req, res) => {
         problem: userProblem
       } = createPrompt(body, problem);
 
+      const hasImages = images.length > 0;
+      const userContent = hasImages
+        ? [
+            { type: 'text', text: `${userProblem || 'Hãy đọc đề bài và giải từng bước.'}\n\nTrước khi giải, hãy chép lại nội dung đề đọc được từ ảnh. Nếu chữ không rõ, nói rõ chỗ không đọc được, tuyệt đối không bịa số liệu.` },
+            ...images.map(url => ({ type: 'image_url', image_url: { url } }))
+          ]
+        : userProblem;
+
       const controller = new AbortController();
 
       const timeout = setTimeout(() => {
@@ -258,7 +297,7 @@ const server = http.createServer(async (req, res) => {
               Authorization: `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              model: GROQ_MODEL,
+              model: hasImages ? GROQ_VISION_MODEL : GROQ_MODEL,
               messages: [
                 {
                   role: 'system',
@@ -266,7 +305,7 @@ const server = http.createServer(async (req, res) => {
                 },
                 {
                   role: 'user',
-                  content: userProblem
+                  content: userContent
                 }
               ],
               temperature: 0.2,
@@ -301,6 +340,12 @@ const server = http.createServer(async (req, res) => {
           response.status,
           message
         );
+
+        if (hasImages && response.status === 400) {
+          return sendJSON(res, 502, {
+            error: `Model đọc ảnh không xử lý được yêu cầu: ${message}. Hãy kiểm tra GROQ_VISION_MODEL trên Render hoặc thử ảnh nhỏ hơn.`
+          });
+        }
 
         if (response.status === 429) {
           return sendJSON(res, 429, {
@@ -361,6 +406,6 @@ server.listen(PORT, '0.0.0.0', () => {
   );
 
   console.log(
-    `AI provider: Groq | Model: ${GROQ_MODEL}`
+    `AI provider: Groq | Text: ${GROQ_MODEL} | Vision: ${GROQ_VISION_MODEL}`
   );
 });
