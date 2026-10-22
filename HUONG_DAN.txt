@@ -1,17 +1,10 @@
-XSTK ACADEMY — UI/UX UPDATE
+XSTK Academy — Phòng thực hành 2.0
 
-Cập nhật trên GitHub cùng thư mục chứa main.jsx:
-1. Thay main.jsx
-2. Thay styles.css
-3. Thay data.js (chỉ cập nhật mô tả bài học, giữ ID/chương/câu hỏi)
-4. Upload hub-campus-optimized.webp
-5. Giữ nguyên server.js, package.json, index.html, PDF và các file khác.
+Chỉ cập nhật main.jsx và styles.css trong cùng thư mục hiện tại trên GitHub.
+KHÔNG thay data.js, server.js, hình ảnh hoặc dữ liệu localStorage.
+Các câu hỏi hiện tại lấy trực tiếp từ data.js; bộ dữ liệu hiện có 12 câu.
 
-Kiểm tra trên Vercel -> Deployments -> Build Logs -> Ready.
-Kiểm thử thủ công: 375, 768, 1280, 1920 px; lộ trình 7 chương, menu mobile, học tiếp, bộ lọc, chấm/giải ảnh, thi thử, KaTeX, sổ tay, tiến độ.
-
-Lưu ý:
-- Bản mã chưa được build bằng Vite và chưa được kiểm thử trên trình duyệt; đã kiểm tra cú pháp JSX/JS bằng TypeScript transpiler.
-- Thi thử dùng đồng hồ đếm ngược tại trình duyệt, chưa có lưu bài thi dang dở sau tải lại.
-- Ảnh HUB là tài sản đã dùng trong dự án; cần xác nhận quyền sử dụng trước khi công khai.
-- Không thay đổi route, endpoint AI hoặc cấu trúc dữ liệu tiến độ.
+Kiểm tra: Chọn đáp án trong Luyện tập -> Kiểm tra -> Giải thích -> Ôn câu sai; đổi sang Thi thử -> trả lời -> Nộp bài -> xem kết quả; thử phím A/B/C/D và Enter.
+Kết quả thi thử lưu riêng trong localStorage key xstk-practice-exams-v2, không thay đổi xstk-state.
+Thời gian thi thử 10/15/30 phút, đồng hồ theo thời gian thực khi tab đang mở. Nếu tải lại trang, phiên thi hiện tại không được phục hồi.
+Chưa thể xác minh triển khai Vercel trực tiếp từ môi trường này.
