@@ -186,8 +186,10 @@ const server = http.createServer(async (req, res) => {
       visionModel: GROQ_VISION_MODEL
     });
   }
-
-  if (req.method !== 'POST' || req.url !== '/api/solve') {
+if (
+  req.method !== 'POST' ||
+  !['/api/solve', '/api/practice/generate'].includes(req.url)
+) {
     return sendJSON(res, 404, {
       error: 'Không tìm thấy API.'
     });
@@ -234,6 +236,229 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      // PHASE 20.3 — AI PRACTICE GENERATOR
+      if (req.url === '/api/practice/generate') {
+        const chapter = String(body.chapter || '3');
+        const difficulty = String(body.difficulty || 'medium');
+        const type = String(body.type || 'mixed');
+        const count = Number(body.count || 10);
+
+        if (
+          !chapterNames[chapter] ||
+          !['easy', 'medium', 'hard'].includes(difficulty) ||
+          !['multiple', 'essay', 'mixed'].includes(type) ||
+          ![5, 10, 20].includes(count)
+        ) {
+          return sendJSON(res, 400, {
+            error: 'Cấu hình tạo đề không hợp lệ.'
+          });
+        }
+
+        const apiKey = process.env.GROQ_API_KEY;
+        if (!apiKey) {
+          return sendJSON(res, 503, {
+            error: 'Chưa cấu hình GROQ_API_KEY.'
+          });
+        }
+
+        const multipleCount =
+          type === 'multiple' ? count :
+          type === 'essay' ? 0 :
+          Math.ceil(count / 2);
+
+        const essayCount = count - multipleCount;
+
+        const difficultyName = {
+          easy: 'dễ',
+          medium: 'trung bình',
+          hard: 'khó'
+        }[difficulty];
+
+        const system = `
+Bạn là giảng viên Xác suất Thống kê đại học.
+Hãy tạo bộ đề bằng tiếng Việt.
+
+Yêu cầu:
+- Chương: ${chapterNames[chapter]}
+- Độ khó: ${difficultyName}
+- Tổng cộng: ${count} câu
+- Trắc nghiệm: ${multipleCount} câu
+- Tự luận: ${essayCount} câu
+
+Phân phối câu hỏi theo đúng nội dung chương.
+Mỗi câu phải có dữ kiện đầy đủ.
+Không tạo câu hỏi mơ hồ hoặc thiếu dữ kiện.
+Kiểm tra phép tính và đáp án trước khi xuất.
+
+Chỉ trả về JSON hợp lệ, không Markdown,
+không dùng dấu bao code.
+
+Định dạng JSON:
+{
+  "questions": [
+    {
+      "id": "q1",
+      "type": "multiple",
+      "prompt": "Nội dung câu hỏi",
+      "options": [
+        "Đáp án A",
+        "Đáp án B",
+        "Đáp án C",
+        "Đáp án D"
+      ],
+      "correctIndex": 0,
+      "explanation": "Giải thích công thức và phép tính"
+    },
+    {
+      "id": "q2",
+      "type": "essay",
+      "prompt": "Nội dung bài tự luận",
+      "options": [],
+      "correctIndex": null,
+      "explanation": "Lời giải chi tiết"
+    }
+  ]
+}
+
+Quy định:
+- type chỉ là "multiple" hoặc "essay".
+- correctIndex là số nguyên 0, 1, 2 hoặc 3
+  đối với trắc nghiệm.
+- Mỗi câu trắc nghiệm có đúng 4 lựa chọn.
+- Mỗi câu tự luận có lời giải tham khảo.
+- Tạo đúng số câu yêu cầu.
+`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(
+          () => controller.abort(),
+          90000
+        );
+
+        let response;
+
+        try {
+          response = await fetch(
+            'https://api.groq.com/openai/v1/chat/completions',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                model: GROQ_MODEL,
+                messages: [
+                  { role: 'system', content: system },
+                  {
+                    role: 'user',
+                    content: 'Hãy tạo bộ đề và trả về JSON.'
+                  }
+                ],
+                temperature: 0.3,
+                max_completion_tokens: 8192,
+                stream: false
+              }),
+              signal: controller.signal
+            }
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          console.error(
+            'Practice generation error:',
+            response.status,
+            data?.error?.message
+          );
+
+          return sendJSON(res, 502, {
+            error: response.status === 429
+              ? 'Groq đang giới hạn lượt sử dụng. Hãy thử lại sau.'
+              : 'Groq không tạo được bộ đề. Kiểm tra Render Logs.'
+          });
+        }
+
+        const content =
+          data?.choices?.[0]?.message?.content;
+
+        if (typeof content !== 'string') {
+          return sendJSON(res, 502, {
+            error: 'AI không trả về nội dung bộ đề.'
+          });
+        }
+
+        let parsed;
+
+        try {
+          const clean = content.trim()
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/, '');
+
+          parsed = JSON.parse(clean);
+        } catch {
+          return sendJSON(res, 502, {
+            error: 'AI trả về JSON không hợp lệ. Hãy thử lại.'
+          });
+        }
+
+        const questions = parsed?.questions;
+
+        if (
+          !Array.isArray(questions) ||
+          questions.length !== count
+        ) {
+          return sendJSON(res, 502, {
+            error: 'AI tạo thiếu câu hỏi. Hãy thử lại.'
+          });
+        }
+
+        const valid = questions.every(q =>
+          q &&
+          typeof q.id === 'string' &&
+          typeof q.prompt === 'string' &&
+          q.prompt.trim().length > 0 &&
+          typeof q.explanation === 'string' &&
+          (
+            (
+              q.type === 'multiple' &&
+              Array.isArray(q.options) &&
+              q.options.length === 4 &&
+              q.options.every(
+                opt => typeof opt === 'string'
+              ) &&
+              Number.isInteger(q.correctIndex) &&
+              q.correctIndex >= 0 &&
+              q.correctIndex <= 3
+            ) ||
+            q.type === 'essay'
+          )
+        );
+
+        const actualMultiple = questions.filter(
+          q => q.type === 'multiple'
+        ).length;
+
+        const uniqueIds = new Set(
+          questions.map(q => q.id)
+        ).size === count;
+
+        if (
+          !valid ||
+          !uniqueIds ||
+          actualMultiple !== multipleCount
+        ) {
+          return sendJSON(res, 502, {
+            error: 'Bộ đề chưa đúng cấu trúc. Hãy tạo lại.'
+          });
+        }
+
+        return sendJSON(res, 200, { questions });
+      }
+      // KẾT THÚC PHASE 20.3
       let images;
       try {
         images = validateImages(body.images);
