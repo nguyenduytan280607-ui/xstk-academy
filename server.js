@@ -177,7 +177,7 @@ const server = http.createServer(async (req, res) => {
 
     raw += chunk.toString('utf8');
 
-    if (Buffer.byteLength(raw, 'utf8') > 30000) {
+   if (Buffer.byteLength(raw, 'utf8') > 20 * 1024 * 1024) {
       tooLarge = true;
 
       sendJSON(res, 413, {
