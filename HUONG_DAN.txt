@@ -1,0 +1,17 @@
+XSTK ACADEMY — UI/UX UPDATE
+
+Cập nhật trên GitHub cùng thư mục chứa main.jsx:
+1. Thay main.jsx
+2. Thay styles.css
+3. Thay data.js (chỉ cập nhật mô tả bài học, giữ ID/chương/câu hỏi)
+4. Upload hub-campus-optimized.webp
+5. Giữ nguyên server.js, package.json, index.html, PDF và các file khác.
+
+Kiểm tra trên Vercel -> Deployments -> Build Logs -> Ready.
+Kiểm thử thủ công: 375, 768, 1280, 1920 px; lộ trình 7 chương, menu mobile, học tiếp, bộ lọc, chấm/giải ảnh, thi thử, KaTeX, sổ tay, tiến độ.
+
+Lưu ý:
+- Bản mã chưa được build bằng Vite và chưa được kiểm thử trên trình duyệt; đã kiểm tra cú pháp JSX/JS bằng TypeScript transpiler.
+- Thi thử dùng đồng hồ đếm ngược tại trình duyệt, chưa có lưu bài thi dang dở sau tải lại.
+- Ảnh HUB là tài sản đã dùng trong dự án; cần xác nhận quyền sử dụng trước khi công khai.
+- Không thay đổi route, endpoint AI hoặc cấu trúc dữ liệu tiến độ.

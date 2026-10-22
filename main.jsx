@@ -1,0 +1,544 @@
+import hubCampusImage from './hub-campus-optimized.webp';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import { Activity, ArrowRight, Award, BookOpen, Bookmark, Calculator, Check, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, UploadCloud, Copy, Flame, GraduationCap, Home, Library, ListChecks, Menu, NotebookPen, Search, Sigma, Sparkles, Target, Trophy, Users, X, RotateCcw, ChartNoAxesCombined } from 'lucide-react';
+import 'katex/dist/katex.min.css';
+import katex from 'katex';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import { chapters, lessons, questions } from './data';
+import './styles.css';
+// Bộ hiển thị thống nhất cho nội dung AI: Markdown + công thức toán.
+function normalizeMath(text) {
+  if (typeof text !== 'string') return '';
+  let value = text.replace(/\r\n?/g, '\n');
+
+  // Chuẩn hóa các dấu phân cách mà mô hình AI thường sử dụng.
+  value = value
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => `\n\n$$\n${math.trim()}\n$$\n\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => `$${math.trim()}$`);
+
+  // Một số câu trả lời viết dấu [ ] thay cho \[ \] ở dòng riêng.
+  value = value.replace(/(^|\n)\s*\[\s*\n([\s\S]*?)\n\s*\](?=\n|$)/g,
+    (full, prefix, math) =>
+      /\\(?:frac|sum|operatorname|text|sqrt|left|right|infty|quad)|[_^]/.test(math)
+        ? `${prefix}\n\n$$\n${math.trim()}\n$$\n\n`
+        : full
+  );
+
+  // Chỉ bao công thức trần khi dòng chưa chứa dấu $.
+  value = value.split('\n').map(line => {
+    if (/\$|`|https?:\/\//.test(line)) return line;
+    const match = line.match(/^(\s*(?:[-*+]\s+)?(?:[^:：\n]{1,65}[:：]\s*)?)(\(?\s*(?:[A-Za-z][A-Za-z0-9]*(?:\[[^\]]+\]|\([^)]*\))?\s*=|\\(?:operatorname|displaystyle|sum|frac|sqrt))[\s\S]*)$/);
+    if (!match || !/\\(?:frac|sum|operatorname|sqrt|text|infty|displaystyle)|\^\{|_\{/.test(match[2])) return line;
+    return `${match[1]}$${match[2].trim()}$`;
+  }).join('\n');
+
+  return value;
+}
+
+// KaTeX báo lỗi khi AI vô tình lồng dấu $ hoặc tạo mã chưa chuẩn.
+// Thử sửa và render lại thay vì để nguyên công thức màu đỏ.
+function MathErrorFallback({ children, className, ...props }) {
+  if (!String(className || '').split(' ').includes('katex-error')) {
+    return <span className={className} {...props}>{children}</span>;
+  }
+  const source = String(children ?? '').trim();
+  const candidates = [
+    source,
+    source.replace(/^\$+|\$+$/g, '').trim(),
+    source.replace(/^\\\(|\\\)$/g, '').replace(/^\\\[|\\\]$/g, '').trim()
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const html = katex.renderToString(candidate, {
+        throwOnError: true,
+        strict: 'ignore',
+        trust: false
+      });
+      return <span dangerouslySetInnerHTML={{ __html: html }} />;
+    } catch { /* Thử phương án tiếp theo */ }
+  }
+  // Giữ nội dung đọc được nếu AI thật sự trả về LaTeX không hợp lệ.
+  return <span title="Công thức AI chưa đúng cú pháp" style={{ color: 'inherit' }}>{source}</span>;
+}
+
+function MathMarkdown({ children }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[[rehypeKatex, {
+        throwOnError: false,
+        strict: 'ignore',
+        trust: false
+      }]]}
+      components={{ span: MathErrorFallback }}
+    >
+      {normalizeMath(children)}
+    </ReactMarkdown>
+  );
+}
+
+const initial = () => { try { return JSON.parse(localStorage.getItem('xstk-state')) || {}; } catch { return {}; } };
+function App() {
+  const [saved, setSaved] = useState(initial);
+  const [page, setPage] = useState('Dashboard');
+  const [dashboardProblem, setDashboardProblem] = useState('');
+  const [selectedLesson, setSelectedLesson] = useState(null);
+  const [query, setQuery] = useState('');
+  const [chapterFilter, setChapterFilter] = useState('all');
+  const [lessonStatus, setLessonStatus] = useState('all');
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [chosen, setChosen] = useState({});
+  const [submitted, setSubmitted] = useState({});
+  const [showMobileNav, setShowMobileNav] = useState(false);
+  const [note, setNote] = useState('');
+  const [activeNote, setActiveNote] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const completed = saved.completed || [];
+  const wrong = saved.wrong || [];
+  const notes = saved.notes || [];
+  const attempts = saved.attempts || {};
+  const xp = completed.length * 10 + Object.values(submitted).filter(Boolean).length * 5;
+  const progress = Math.round(completed.length / lessons.length * 100);
+  useEffect(() => { localStorage.setItem('xstk-state', JSON.stringify(saved)); }, [saved]);
+  const update = (key, value) => setSaved(prev => ({ ...prev, [key]: value }));
+  const markComplete = (lesson) => { if (!completed.includes(lesson.id)) update('completed', [...completed, lesson.id]); setSelectedLesson(null); };
+  const filteredLessons = useMemo(() => lessons.filter(l => (chapterFilter === 'all' || l.chapterId === Number(chapterFilter)) && `${l.title} ${l.description} ${chapters[l.chapterId-1].title}`.toLowerCase().includes(query.toLowerCase())), [chapterFilter, query]);
+  const nav = [
+    { name: 'Dashboard', icon: Home }, { name: 'Lộ trình học', icon: Target }, { name: 'Bài học', icon: BookOpen }, { name: 'Phòng thực hành', icon: Calculator }, { name: 'AI tạo đề luyện tập', icon: Sparkles }, { name: 'Giải bài tập', icon: Sparkles }, { name: 'Ôn tập câu sai', icon: RotateCcw }, { name: 'Sổ tay công thức', icon: NotebookPen }, { name: 'Thống kê kết quả', icon: ChartNoAxesCombined }
+  ];
+  const go = (name) => { setPage(name); setSelectedLesson(null); setShowMobileNav(false); };
+  const nextLesson = lessons.find(l => !completed.includes(l.id)) || lessons[0];
+  const renderLesson = (lesson) => setSelectedLesson(lesson);
+
+  return <div className="app-shell">
+    <aside className={`sidebar ${showMobileNav ? 'mobile-open' : ''}`}>
+      <div className="brand"><div className="brand-mark"><Sigma size={25}/></div><div><strong>XSTK</strong><span>ACADEMY</span></div><button className="mobile-close icon-button" aria-label="Đóng menu" onClick={() => setShowMobileNav(false)}><X size={18}/></button></div>
+      <button className="search-box" onClick={() => setSearchOpen(!searchOpen)}><Search size={16}/><span>Tìm kiếm bài học...</span><kbd>⌘ K</kbd></button>
+      {searchOpen && <div className="sidebar-search"><input autoFocus value={query} onChange={e => {setQuery(e.target.value); setPage('Bài học')}} placeholder="Tên bài học, công thức..."/><button onClick={() => setSearchOpen(false)}><X size={15}/></button></div>}
+      <div className="nav-label">KHÔNG GIAN HỌC TẬP</div>
+      <nav>{nav.map(item => { const Icon = item.icon; return <button key={item.name} title={item.name} aria-label={item.name} aria-current={page === item.name ? "page" : undefined} className={`nav-item ${page === item.name ? 'active' : ''}`} onClick={() => go(item.name)}><Icon size={18}/><span>{item.name}</span>{item.name === 'Ôn tập câu sai' && wrong.length > 0 && <em>{wrong.length}</em>}</button>; })}</nav>
+      <div className="sidebar-bottom"><div className="mini-progress"><div className="mini-progress-icon"><Flame size={16}/></div><div><strong>{completed.length} bài hoàn thành</strong><span>Tiếp tục giữ nhịp học nhé!</span></div></div><div className="profile"><div className="avatar" aria-label="Ảnh đại diện người học">X</div><div><strong>Người học XSTK</strong><span>Hành trình của bạn</span></div><ChevronDown size={16}/></div></div>
+    </aside>
+    {showMobileNav && <div className="overlay" onClick={() => setShowMobileNav(false)} />}
+    <main className="main-area">
+      <header className="topbar"><button className="icon-button mobile-menu" aria-label="Mở menu điều hướng" onClick={() => setShowMobileNav(true)}><Menu size={20}/></button><div className="breadcrumb">Không gian học tập <ChevronRight size={14}/> <strong>{selectedLesson ? 'Bài học' : page}</strong></div><div className="top-actions"><span className="top-streak"><Flame size={15}/>{completed.length ? 'Đang tiến bộ' : 'Bắt đầu hôm nay'}</span><div className="top-avatar" aria-label="Hồ sơ người học">X</div></div></header>
+      <div className="content-wrap">
+        {selectedLesson ? <LessonView lesson={selectedLesson} completed={completed.includes(selectedLesson.id)} onBack={() => setSelectedLesson(null)} onComplete={() => markComplete(selectedLesson)} onPractice={() => {setSelectedLesson(null);go('Phòng thực hành')}} /> : <>
+          {page === 'Dashboard' && <Dashboard completed={completed} progress={progress} xp={xp} nextLesson={nextLesson} onGo={go} onLesson={renderLesson} wrongCount={wrong.length} onSolve={(text) => { setDashboardProblem(text); go('Giải bài tập'); }} />}
+          {page === 'Lộ trình học' && <PathPage completed={completed} onGo={go} onLesson={renderLesson} />}
+          {page === 'Bài học' && <LessonsPage lessonStatus={lessonStatus} setLessonStatus={setLessonStatus} filteredLessons={filteredLessons} query={query} setQuery={setQuery} chapterFilter={chapterFilter} setChapterFilter={setChapterFilter} completed={completed} onLesson={renderLesson} />}
+          {page === 'AI tạo đề luyện tập' && <AIPracticeGenerator />}
+          {page === 'Phòng thực hành' && <PracticePage chosen={chosen} setChosen={setChosen} submitted={submitted} setSubmitted={setSubmitted} wrong={wrong} update={update} quizIndex={quizIndex} setQuizIndex={setQuizIndex} />}
+          {page === 'Giải bài tập' && <SolvePage initialProblem={dashboardProblem} onSaveNote={(text)=>update('notes',[{id:Date.now(),text,createdAt:new Date().toLocaleDateString('vi-VN')},...notes])} />} 
+          {page === 'Ôn tập câu sai' && <ReviewPage wrong={wrong} onPractice={() => go('Phòng thực hành')} />}
+          {page === 'Sổ tay công thức' && <NotesPage notes={notes} note={note} setNote={setNote} activeNote={activeNote} setActiveNote={setActiveNote} update={update} />}
+          {page === 'Thống kê kết quả' && <StatsPage completed={completed} xp={xp} attempts={attempts} />}
+        </>}
+        <footer className="footer"><span>© XSTK Academy</span><span>Học chắc bản chất · Luyện tập có phương pháp</span></footer>
+      </div>
+    </main>
+  </div>;
+}
+
+function PageHeading({eyebrow,title,desc,action}) { return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action}</div>; }
+function ProgressBar({value}) { return <div className="progress-track"><div className="progress-fill" style={{width:`${Math.max(0,Math.min(100,value))}%`}}/></div>; }
+function Dashboard({completed,progress,xp,nextLesson,onGo,onLesson,wrongCount,onSolve}) {
+  const [quickProblem, setQuickProblem] = useState('');
+  const recent = lessons.filter(l => completed.includes(l.id)).slice(-3).reverse();
+  return <>
+    <section className="welcome-banner hub-hero-full" style={{'--hub-hero-image': `url("${hubCampusImage}")`}} aria-label="Chào mừng đến với XSTK Academy"><div className="welcome-copy"><div className="welcome-chip"><Sparkles size={13}/> XSTK ACADEMY · KHÔNG GIAN HỌC TẬP</div><h1>Chào mừng trở lại! 👋<br/>Chinh phục Xác suất thống kê</h1><p>Học chắc bản chất, luyện từng dạng bài và tiến bộ mỗi ngày cùng cộng đồng sinh viên.</p><button className="primary-button" onClick={() => onLesson(nextLesson)}>Học tiếp: Chương {nextLesson.chapterId} · {nextLesson.title} <ArrowRight size={16}/></button></div></section>
+    <section className="daily-suggestions"><strong><Sparkles size={18}/> Gợi ý hôm nay</strong><button onClick={()=>onLesson(nextLesson)}>Học bài tiếp theo: {nextLesson.title} <ArrowRight size={16}/></button>{wrongCount>0&&<button onClick={()=>onGo("Ôn tập câu sai")}>Ôn {wrongCount} câu làm sai <ArrowRight size={16}/></button>}</section>
+    <section className="learning-overview" aria-label="Tổng quan tiến độ học tập">
+      <div className="learning-progress-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">TỔNG QUAN HỌC TẬP</span><h2>Tiến độ của bạn</h2></div></div>
+        <div className="learning-progress-body">
+          <div className="learning-ring" role="img" aria-label={`Đã hoàn thành ${progress}% lộ trình`} style={{'--progress': `${Math.max(0, Math.min(100, progress))}%`}}>
+            <div className="learning-ring-inner"><strong>{progress}%</strong><span>Hoàn thành</span></div>
+          </div>
+          <div className="learning-progress-info"><strong>{completed.length} / {lessons.length} bài học</strong><p>{completed.length === 0 ? 'Mỗi bài học hoàn thành là một bước tiến mới!' : `Bạn đã hoàn thành ${completed.length} bài. Tiếp tục phát huy nhé!`}</p><button className="learning-inline-link" onClick={() => onGo('Lộ trình học')}>Xem lộ trình <ArrowRight size={15}/></button></div>
+        </div>
+      </div>
+      <div className="learning-achievements-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">THÀNH TÍCH</span><h2>Hành trình chinh phục</h2></div><Award size={22}/></div>
+        <div className="learning-achievement-grid">
+          <div><BookOpen size={20}/><strong>{completed.length}</strong><span>Bài đã học</span></div>
+          <div><CheckCircle2 size={20}/><strong>{chapters.filter(c => lessons.filter(l => l.chapterId === c.id).every(l => completed.includes(l.id))).length}</strong><span>Chương hoàn thành</span></div>
+          <div><Award size={20}/><strong>{xp}</strong><span>XP tích lũy</span></div>
+          <div><RotateCcw size={20}/><strong>{wrongCount}</strong><span>Câu cần ôn tập</span></div>
+        </div>
+      </div>
+      <div className="learning-chapter-card">
+        <div className="learning-card-heading"><div><span className="learning-kicker">7 CHẶNG KIẾN THỨC</span><h2>Tiến độ theo chương</h2></div></div>
+        <div className="learning-chapter-list">{chapters.map(c => { const chapterLessons = lessons.filter(l => l.chapterId === c.id); const done = chapterLessons.filter(l => completed.includes(l.id)).length; const percent = chapterLessons.length ? Math.round(done / chapterLessons.length * 100) : 0; return <div className="learning-chapter-row" key={c.id}><div className="learning-chapter-title"><span>Chương {c.id}</span><strong>{done}/{chapterLessons.length}</strong></div><div className="learning-chapter-track"><span style={{width: `${percent}%`}}/></div></div>; })}</div>
+      </div>
+    </section>
+    <section className="dashboard-ai-section" aria-label="Giải bài tập với AI">
+      <div className="dashboard-ai-panel">
+        <div className="dashboard-ai-header"><div className="dashboard-ai-symbol"><Sparkles size={23}/></div><div><span className="learning-kicker">TRỢ LÝ HỌC TẬP</span><h2>Giải bài tập cùng AI</h2><p>Nhập đề bài để chuyển sang phòng giải chi tiết từng bước.</p></div></div>
+        <label className="dashboard-ai-label" htmlFor="dashboard-ai-problem">Đề bài của bạn</label>
+        <textarea id="dashboard-ai-problem" value={quickProblem} onChange={e => setQuickProblem(e.target.value)} placeholder="Ví dụ: X có phân phối chuẩn N(80, 10²). Tính P(X < 90)..." rows={4}/>
+        <div className="dashboard-ai-actions"><span><CheckCircle2 size={15}/> Giải thích rõ công thức và cách tính</span><button className="primary-button" type="button" disabled={!quickProblem.trim()} onClick={() => onSolve(quickProblem.trim())}>Giải bài với AI <ArrowRight size={16}/></button></div>
+      </div>
+      <div className="dashboard-ai-side"><div className="dashboard-ai-side-icon"><BookOpen size={28}/></div><h3>Trợ giảng AI luôn sẵn sàng</h3><p>Giải bài theo từng bước, trình bày công thức rõ ràng và hỗ trợ bạn hiểu bản chất.</p><button className="text-button" type="button" onClick={() => onGo('Giải bài tập')}>Mở phòng giải bài <ArrowRight size={16}/></button></div>
+    </section>
+    <div className="stats-grid"><StatCard icon={BookOpen} label="Bài đã hoàn thành" value={`${completed.length}/${lessons.length}`} detail={`${progress}% lộ trình`} tone="green"/><StatCard icon={Award} label="Điểm kinh nghiệm" value={xp} detail="XP tích lũy" tone="gold"/><StatCard icon={Target} label="Chặng học" value={`${chapters.filter(c => lessons.filter(l=>l.chapterId===c.id).every(l=>completed.includes(l.id))).length}/7`} detail="Chương hoàn thành" tone="purple"/><StatCard icon={RotateCcw} label="Cần ôn tập" value={wrongCount} detail="Câu trả lời sai đã lưu" tone="blue"/></div>
+    <div className="section-heading"><div><div className="eyebrow">TIẾP TỤC HỌC</div><h2>Bài học tiếp theo</h2></div><button className="text-button" onClick={() => onGo('Bài học')}>Xem tất cả bài học <ArrowRight size={15}/></button></div>
+    <div className="continue-card"><div className="continue-icon"><BookOpen size={24}/></div><div className="continue-body"><div className="lesson-meta">CHƯƠNG {nextLesson.chapterId} · {nextLesson.minutes} PHÚT</div><h3>{nextLesson.title}</h3><p>{nextLesson.description}</p><div className="continue-progress"><ProgressBar value={Math.round(lessons.filter(l=>l.chapterId===nextLesson.chapterId&&completed.includes(l.id)).length/lessons.filter(l=>l.chapterId===nextLesson.chapterId).length*100)}/><span>{Math.round(lessons.filter(l=>l.chapterId===nextLesson.chapterId&&completed.includes(l.id)).length/lessons.filter(l=>l.chapterId===nextLesson.chapterId).length*100)}% chương</span></div></div><button className="primary-button" onClick={() => onLesson(nextLesson)}>Học ngay <ArrowRight size={16}/></button></div>
+    <div className="section-heading"><div><div className="eyebrow">HÀNH TRÌNH HỌC</div><h2>7 chặng kiến thức</h2></div><button className="text-button" onClick={() => onGo('Lộ trình học')}>Mở lộ trình <ArrowRight size={15}/></button></div>
+    <div className="chapter-grid">{chapters.slice(0,4).map((c,i)=><ChapterCard key={c.id} chapter={c} completed={completed} onClick={() => onGo('Bài học')} index={i}/>)}</div>
+    <div className="section-heading"><div><div className="eyebrow">GẦN ĐÂY</div><h2>Những bài bạn đã học</h2></div></div>
+    {recent.length ? <div className="simple-list">{recent.map(l=><LessonRow key={l.id} lesson={l} done onClick={() => onLesson(l)}/>)}</div> : <div className="empty-state"><BookOpen size={25}/><strong>Hành trình bắt đầu từ đây</strong><span>Hoàn thành bài học đầu tiên để lưu tiến độ của bạn.</span></div>}
+  </>;
+}
+function StatCard({icon:Icon,label,value,detail,tone}) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19}/></div><div className="stat-label">{label}</div><div className="stat-value">{value}</div><div className="stat-detail">{detail}</div></div>; }
+function ChapterCard({chapter,completed,onClick,index=0}) { const list=lessons.filter(l=>l.chapterId===chapter.id);const count=list.filter(l=>completed.includes(l.id)).length; return <button className="chapter-card" onClick={onClick}><div className={`chapter-symbol symbol-${index%4}`}>{['P','X','ƒ','μ'][index%4]}</div><div className="chapter-card-top"><span>CHƯƠNG {chapter.id}</span><span>{count}/{list.length}</span></div><h3>{chapter.short}</h3><p>{chapter.description}</p><ProgressBar value={count/list.length*100}/><div className="chapter-card-bottom"><span>{count===list.length?'Hoàn thành':`${list.length-count} bài còn lại`}</span><ChevronRight size={16}/></div></button>; }
+function PathPage({completed,onGo,onLesson}) {
+  const [view,setView] = useState('map');
+  const [active,setActive] = useState(()=>chapters.find(c=>lessons.some(l=>l.chapterId===c.id&&!completed.includes(l.id)))?.id || 1);
+  const stats = chapters.map(c=>{const items=lessons.filter(l=>l.chapterId===c.id);const done=items.filter(l=>completed.includes(l.id)).length;return {...c,items,done,pct:items.length?Math.round(done/items.length*100):0};});
+  const selected=stats.find(c=>c.id===active)||stats[0];
+  const next=lessons.find(l=>!completed.includes(l.id))||lessons[0];
+  const doneTotal=lessons.filter(l=>completed.includes(l.id)).length;
+  const pct=Math.round(doneTotal/Math.max(1,lessons.length)*100);
+  const openChapter=c=>{setActive(c.id);setView('list');};
+  const openFirst=c=>{const nextItem=c.items.find(l=>!completed.includes(l.id))||c.items[0];if(nextItem)onLesson(nextItem);};
+  return <section className="journey-page redesigned-journey">
+    <div className="journey-hero"><div className="journey-intro"><div className="journey-eyebrow">XSTK ACADEMY · LỘ TRÌNH HỌC</div><h1>Hành trình chinh phục XSTK</h1><p>{chapters.length} chương kiến thức · {lessons.length} bài học từ nền tảng đến thực hành.</p></div>
+      <div className="journey-next"><div><span className="eyebrow">BÀI TIẾP THEO BẠN NÊN HỌC</span><strong>{next.title}</strong><small><Clock3 size={15}/> {next.minutes} phút · Chương {next.chapterId}</small></div><button className="primary-button" onClick={()=>onLesson(next)}>Học tiếp <ArrowRight size={16}/></button></div>
+      {view==='map'&&<div className="journey-stage" aria-label="Lộ trình học gồm 7 chặng"><div className="journey-road-line" aria-hidden="true"/>{stats.map((c,i)=>{const status=c.pct===100?'done':c.done?'learning':'new';return <button key={c.id} type="button" className={`journey-stop journey-stop-${status} ${active===c.id?'chosen':''}`} onClick={()=>openChapter(c)} aria-label={`Chương ${c.id}: ${c.title}. ${c.done} trên ${c.items.length} bài`}><span className="journey-stop-number">{c.pct===100?<Check size={20}/>:c.id}</span><span className="journey-stop-card"><span className="journey-stop-title">Chương {c.id}: {c.title}</span><span className="journey-stop-status">{c.pct===100?<CheckCircle2 size={15}/>:c.done?<Flame size={15}/>:<Clock3 size={15}/>} {c.pct===100?'Hoàn thành':c.done?'Đang học':'Chưa bắt đầu'}</span><span className="journey-stop-count">{c.done}/{c.items.length} bài · {c.pct}%</span><span className="journey-mini-track"><span style={{width:`${c.pct}%`}}/></span></span></button>})}</div>}
+      <div className="journey-total"><div><Trophy size={22}/><strong>Tiến độ toàn hành trình</strong><b>{pct}%</b></div><ProgressBar value={pct}/><p>{doneTotal}/{lessons.length} bài hoàn thành · {chapters.length} chương</p></div>
+    </div>
+    <div className="journey-details"><div className="journey-details-head"><div><h2>Chi tiết từng chương</h2><p>Chọn chương để mở bài học và theo dõi tiến độ.</p></div><div className="journey-switch"><button className={view==='map'?'active':''} onClick={()=>setView('map')}><Target size={16}/> Bản đồ</button><button className={view==='list'?'active':''} onClick={()=>setView('list')}><ListChecks size={16}/> Danh sách</button></div></div>
+      {view==='map'?<div className="journey-chapters">{stats.map(c=><button className={`journey-chapter-tile ${active===c.id?'active':''}`} key={c.id} onClick={()=>openChapter(c)}><span className="journey-chapter-index">{c.id}</span><BookOpen size={25}/><strong>Chương {c.id}</strong><span>{c.title}</span><small>{c.done}/{c.items.length} bài · {c.pct}%</small><ProgressBar value={c.pct}/><em>Xem chi tiết <ArrowRight size={14}/></em></button>)}</div>:<div className="journey-list-layout"><div className="journey-list-chapters">{stats.map(c=><button key={c.id} className={active===c.id?'active':''} onClick={()=>setActive(c.id)}><span>{c.id}</span><strong>{c.title}</strong><small>{c.done}/{c.items.length}</small></button>)}</div><div className="journey-lesson-panel"><div className="journey-panel-head"><div><small>CHƯƠNG {selected.id}</small><h3>{selected.title}</h3><p>{selected.description}</p></div><button onClick={()=>openFirst(selected)}>{selected.done?'Học tiếp':'Bắt đầu học'} <ArrowRight size={16}/></button></div><ProgressBar value={selected.pct}/><div className="journey-lesson-list">{selected.items.map(l=><button key={l.id} onClick={()=>onLesson(l)}><span className={completed.includes(l.id)?'completed':''}>{completed.includes(l.id)?<Check size={15}/>:<BookOpen size={15}/>}</span><strong>{l.title}</strong><ChevronRight size={16}/></button>)}</div></div></div>}
+    </div>
+  </section>;
+}
+
+function LessonsPage({filteredLessons,query,setQuery,chapterFilter,setChapterFilter,completed,onLesson,lessonStatus,setLessonStatus}) {
+  const current=lessons.find(l=>!completed.includes(l.id));
+  const [expanded,setExpanded]=useState(()=>current?.chapterId||1);
+  const shown=filteredLessons.filter(l=>lessonStatus==='all'||(lessonStatus==='done'?completed.includes(l.id):!completed.includes(l.id)));
+  return <><PageHeading eyebrow="THƯ VIỆN KIẾN THỨC" title="Danh mục bài học" desc={`${lessons.length} bài học theo ${chapters.length} chương, đi từ nền tảng đến vận dụng thực tiễn.`}/><div className="filter-bar"><div className="input-with-icon"><Search size={17}/><input aria-label="Tìm kiếm bài học" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Tìm bài học, chủ đề..."/></div><select aria-label="Lọc theo chương" value={chapterFilter} onChange={e=>setChapterFilter(e.target.value)}><option value="all">Tất cả chương</option>{chapters.map(c=><option value={c.id} key={c.id}>Chương {c.id}: {c.short}</option>)}</select><select aria-label="Lọc trạng thái" value={lessonStatus} onChange={e=>setLessonStatus(e.target.value)}><option value="all">Tất cả trạng thái</option><option value="new">Chưa học</option><option value="done">Đã học</option></select></div><div className="results-line">Hiển thị <strong>{shown.length}</strong> bài học <span>· {shown.filter(l=>completed.includes(l.id)).length} bài đã hoàn thành</span></div>{shown.length?<div className="lesson-groups">{chapters.map(c=>{const items=shown.filter(l=>l.chapterId===c.id);if(!items.length)return null;const total=lessons.filter(l=>l.chapterId===c.id).length;const done=lessons.filter(l=>l.chapterId===c.id&&completed.includes(l.id)).length;return <section className="lesson-group" key={c.id}><button className="lesson-group-head" aria-expanded={expanded===c.id} onClick={()=>setExpanded(expanded===c.id?null:c.id)}><span className="chapter-bubble">{c.id}</span><span><strong>Chương {c.id}: {c.title}</strong><small>{done}/{total} bài hoàn thành</small></span><ChevronDown size={19}/></button>{expanded===c.id&&<div className="lesson-catalog">{items.map(l=><LessonRow key={l.id} lesson={l} done={completed.includes(l.id)} onClick={()=>onLesson(l)}/>)}</div>}</section>})}</div>:<div className="empty-state"><Search size={24}/><strong>Không tìm thấy bài học</strong><span>Thử từ khóa hoặc bộ lọc khác.</span><button className="secondary-button" onClick={()=>{setQuery('');setChapterFilter('all');setLessonStatus('all')}}>Xóa bộ lọc</button></div>}</>;
+}
+
+function LessonRow({lesson,done,onClick}) { return <button className="lesson-row" onClick={onClick}><div className={`lesson-status ${done?'done':''}`}>{done?<Check size={16}/>:<BookOpen size={16}/>}</div><div className="lesson-row-main"><div className="lesson-meta">CHƯƠNG {lesson.chapterId} · BÀI {lesson.number}</div><h3>{lesson.title}</h3><p>{lesson.description || `Tìm hiểu ${lesson.title.toLowerCase()} và áp dụng vào bài tập xác suất thống kê.`}</p></div><div className="lesson-row-side"><span><Clock3 size={13}/>{lesson.minutes} phút</span><span className={`status-text ${done?'is-done':''}`}>{done?<><Check size={13}/> Đã học</>:'Chưa học'}</span></div><ChevronRight className="row-chevron" size={17}/></button>; }
+function LessonView({lesson,completed,onBack,onComplete,onPractice}) { const [showHint,setShowHint]=useState(false);return <><button className="back-button" onClick={onBack}><ChevronRight size={15} className="back-arrow"/> Quay lại danh sách</button><div className="lesson-layout"><article className="lesson-article"><div className="eyebrow">CHƯƠNG {lesson.chapterId} · BÀI {lesson.number}</div><h1>{lesson.title}</h1><p className="article-lead">{lesson.description}</p><div className="article-meta"><span><Clock3 size={14}/>{lesson.minutes} phút đọc</span><span><Library size={14}/>{lesson.source}</span></div><div className="article-divider"/><h2>Mục tiêu bài học</h2><p>Sau bài này, bạn cần hiểu khái niệm, nhận diện dữ kiện trong đề và biết khi nào nên áp dụng công thức.</p><h2>Giải thích cốt lõi</h2><p>{lesson.content}</p><div className="lesson-detail-list"><div><strong>Điểm cần nhớ</strong><p>{lesson.note}</p></div><div><strong>Ví dụ / cách vận dụng</strong><p>{lesson.example}</p></div></div><div className="formula-box"><div className="formula-label"><Sigma size={17}/> CÔNG THỨC / QUY TẮC GHI NHỚ</div><div className="formula-text">{lesson.formula}</div><button className="small-outline" onClick={()=>navigator.clipboard?.writeText(lesson.formula)}><Bookmark size={14}/> Sao chép công thức</button></div><h2>Cách giải một bài tập</h2><div className="steps-list"><div><b>01</b><span><strong>Đọc đề và xác định dữ kiện</strong><small>Gạch chân các giá trị đã biết và đại lượng cần tìm.</small></span></div><div><b>02</b><span><strong>Chọn đúng công thức</strong><small>Kiểm tra điều kiện áp dụng, không chọn công thức chỉ vì thấy quen.</small></span></div><div><b>03</b><span><strong>Thay số và tính toán</strong><small>Viết từng bước để dễ phát hiện lỗi.</small></span></div><div><b>04</b><span><strong>Diễn giải kết quả</strong><small>Trả lời đúng câu hỏi bằng ngôn ngữ của bài toán.</small></span></div></div><div className="source-note"><CircleHelp size={17}/><span><strong>Nguồn nội dung</strong><br/>Khung chủ đề được tổ chức theo file tài liệu gốc. Phần khái niệm và công thức được biên soạn theo chủ đề của PDF. Các ví dụ diễn giải trên website là phần hỗ trợ học tập; khi có khác biệt ký hiệu, hãy ưu tiên quy ước trong tài liệu gốc.<br/><a className="source-pdf-link" href={`/tai-lieu/bai-${lesson.chapterId}-${({1:'xac-suat',2:'bien-ngau-nhien',3:'phan-phoi',4:'mau-ngau-nhien',5:'uoc-luong',6:'kiem-dinh',7:'so-sanh'})[lesson.chapterId]}.pdf`} target="_blank" rel="noreferrer">Mở PDF gốc Bài {lesson.chapterId} ↗</a></span></div><div className="article-actions"><button className="primary-button" onClick={onComplete}>{completed?<CheckCircle2 size={16}/>:<Check size={16}/>} {completed?'Đã hoàn thành':'Đánh dấu hoàn thành'}</button><button className="secondary-button" onClick={onPractice}>Luyện tập ngay <ArrowRight size={15}/></button></div></article><aside className="lesson-aside"><div className="aside-card"><div className="aside-title"><ListChecks size={17}/> Trong bài này</div><a href="#" onClick={e=>{e.preventDefault();document.querySelector('.formula-box')?.scrollIntoView({behavior:'smooth'})}}>Công thức cần nhớ</a><a href="#" onClick={e=>{e.preventDefault();document.querySelector('.steps-list')?.scrollIntoView({behavior:'smooth'})}}>Quy trình giải bài</a><div className="aside-separator"/><div className="aside-title"><Award size={17}/> Tiến độ bài học</div><div className="aside-progress"><ProgressBar value={completed?100:0}/><span>{completed?'100%':'0%'} hoàn thành</span></div></div><div className="aside-tip"><Sparkles size={18}/><strong>Mẹo học hiệu quả</strong><p>Hãy tự giải thích công thức bằng lời của bạn, sau đó làm một bài tập mà không nhìn lời giải.</p></div></aside></div></>; }
+function PracticePage({chosen,setChosen,submitted,setSubmitted,wrong,update,quizIndex,setQuizIndex}) {
+  const [filter,setFilter]=useState('all');const [mode,setMode]=useState('practice');const [showExplain,setShowExplain]=useState(false);const [seconds,setSeconds]=useState(15*60);const [examDone,setExamDone]=useState(false);
+  const qs=questions.filter(q=>filter==='all'||q.chapterId===Number(filter));const index=Math.min(quizIndex,Math.max(0,qs.length-1));const q=qs[index];const answer=chosen[q?.id];const revealed=mode==='practice'?!!submitted[q?.id]:examDone;
+  const choose=idx=>{if(!revealed)setChosen(p=>({...p,[q.id]:idx}));};
+  const submit=()=>{if(answer===undefined)return;setSubmitted(p=>({...p,[q.id]:true}));const nextWrong=answer!==q.answer?[...new Set([...wrong,q.id])]:wrong.filter(id=>id!==q.id);update('wrong',nextWrong);setShowExplain(true);};
+  const finishExam=()=>{setExamDone(true);setSubmitted(p=>({...p,...Object.fromEntries(qs.map(item=>[item.id,true]))}));update('wrong',[...new Set([...wrong,...qs.filter(item=>chosen[item.id]!==item.answer).map(item=>item.id)])]);};
+  useEffect(()=>{if(mode!=='exam'||examDone)return;const timer=setInterval(()=>setSeconds(v=>Math.max(0,v-1)),1000);return()=>clearInterval(timer);},[mode,examDone]);
+  useEffect(()=>{if(mode==='exam'&&seconds===0&&!examDone)finishExam();},[seconds,mode,examDone]);
+  useEffect(()=>{const handle=e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||e.altKey||e.ctrlKey||e.metaKey||!q)return;const n='abcd'.indexOf(e.key.toLowerCase());if(n>=0&&n<q.options.length){e.preventDefault();choose(n);}if(e.key==='Enter'&&revealed){e.preventDefault();setQuizIndex(v=>Math.min(v+1,qs.length-1));setShowExplain(false);}};window.addEventListener('keydown',handle);return()=>window.removeEventListener('keydown',handle);},[q,answer,revealed,qs.length]);
+  return <><PageHeading eyebrow="PHÒNG THỰC HÀNH" title="Luyện tập và kiểm tra" desc="Làm bài, xem giải thích và lưu câu sai để ôn tập."/><div className="practice-toolbar"><div><span className="eyebrow">NGÂN HÀNG CÂU HỎI</span><h3>{qs.length} câu hỏi</h3></div><div className="practice-filters"><select aria-label="Chế độ luyện tập" value={mode} onChange={e=>{setMode(e.target.value);setExamDone(false);setSeconds(900);setQuizIndex(0)}}><option value="practice">Luyện tập</option><option value="exam">Thi thử</option></select><select aria-label="Lọc chương" value={filter} onChange={e=>{setFilter(e.target.value);setQuizIndex(0)}}><option value="all">Tất cả chương</option>{chapters.map(c=><option key={c.id} value={c.id}>Chương {c.id}</option>)}</select>{mode==='exam'&&<span className="exam-timer"><Clock3 size={16}/> {Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>}</div></div>{q&&<div className="quiz-card"><div className="quiz-top"><span className="pill">CHƯƠNG {q.chapterId}</span><span className="difficulty">{q.difficulty}</span><span className="quiz-number">Câu {index+1}/{qs.length}</span></div><ProgressBar value={(index+1)/qs.length*100}/><div className="quiz-question"><MathMarkdown>{q.prompt}</MathMarkdown></div><div className="answer-options">{q.options.map((opt,i)=><button key={i} disabled={revealed} className={`answer-option ${answer===i?'selected':''} ${revealed&&i===q.answer?'correct':''} ${revealed&&answer===i&&i!==q.answer?'incorrect':''}`} onClick={()=>choose(i)}><span className="option-letter">{String.fromCharCode(65+i)}</span><div className="answer-text"><MathMarkdown>{opt}</MathMarkdown></div>{revealed&&i===q.answer&&<CheckCircle2 size={18}/>}</button>)}</div>{revealed&&<div className={`explanation ${answer===q.answer?'good':'bad'}`}><button className="explanation-toggle" aria-expanded={showExplain} onClick={()=>setShowExplain(!showExplain)}><strong>{answer===q.answer?'Chính xác!':'Cần ôn lại'} · Giải thích</strong><ChevronDown size={18}/></button>{showExplain&&<MathMarkdown>{q.explanation}</MathMarkdown>}</div>}<div className="quiz-footer"><button className="secondary-button" disabled={index===0} onClick={()=>{setQuizIndex(index-1);setShowExplain(false)}}>Câu trước</button><button className="secondary-button" disabled={index===qs.length-1} onClick={()=>{setQuizIndex(index+1);setShowExplain(false)}}>Bỏ qua</button>{mode==='exam'&&!examDone?<button className="primary-button" onClick={finishExam}>Nộp bài</button>:!revealed?<button className="primary-button" disabled={answer===undefined} onClick={submit}>Kiểm tra đáp án</button>:<button className="primary-button" disabled={index===qs.length-1} onClick={()=>{setQuizIndex(index+1);setShowExplain(false)}}>Câu tiếp theo <ArrowRight size={15}/></button>}</div>{mode==='exam'&&examDone&&<p className="exam-score">Kết quả: {qs.filter(item=>chosen[item.id]===item.answer).length}/{qs.length} câu đúng</p>}</div>}<div className="practice-bottom"><div><Target size={19}/><span><strong>Ôn tập có mục tiêu</strong><small>Câu trả lời sai được lưu để bạn ôn lại.</small></span></div><div><strong>{wrong.length}</strong><span>câu cần ôn</span></div></div></>;
+}
+
+function AIPracticeGenerator() {
+  const [chapter,setChapter]=useState('3');
+  const [difficulty,setDifficulty]=useState('medium');
+  const [type,setType]=useState('mixed');
+  const [count,setCount]=useState(10);
+  const [items,setItems]=useState([]);
+  const [responses,setResponses]=useState({});
+  const [revealed,setRevealed]=useState({});
+  const [feedback,setFeedback]=useState({});
+  const [loading,setLoading]=useState(false);
+  const [busyId,setBusyId]=useState(null);
+  const [error,setError]=useState('');
+  const [showAnswers,setShowAnswers]=useState(false);
+  const generate=async()=>{
+    if(loading)return;
+    setLoading(true);setError('');setItems([]);setResponses({});setRevealed({});setFeedback({});setShowAnswers(false);
+    try{
+      const r=await fetch('https://xstk-academy.onrender.com/api/practice/generate',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chapter,difficulty,type,count})
+      });
+      const data=await r.json();
+      if(!r.ok)throw new Error(data.error||'Không thể tạo bộ đề.');
+      if(!Array.isArray(data.questions)||data.questions.length!==count)throw new Error('Bộ đề AI trả về thiếu câu hỏi, hãy thử tạo lại.');
+      setItems(data.questions);
+    }catch(e){setError(e.message||'Không thể kết nối AI.');}
+    finally{setLoading(false);}
+  };
+  const gradeEssay=async(q)=>{
+    const studentAnswer=(responses[q.id]||'').trim();
+    if(!studentAnswer||busyId)return;
+    setBusyId(q.id);setError('');
+    try{
+      const r=await fetch('https://xstk-academy.onrender.com/api/grade',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problem:q.prompt,studentAnswer,chapter,level:'ngan-gon'})
+      });
+      const data=await r.json();if(!r.ok)throw new Error(data.error||'Không chấm được bài.');
+      setFeedback(prev=>({...prev,[q.id]:data.answer}));
+      setRevealed(prev=>({...prev,[q.id]:true}));
+    }catch(e){setError(e.message||'Không chấm được bài.');}
+    finally{setBusyId(null);}
+  };
+  const mc=items.filter(q=>q.type==='multiple');
+  const attempted=mc.filter(q=>revealed[q.id]);
+  const correct=attempted.filter(q=>Number(responses[q.id])===q.correctIndex).length;
+  return <>
+    <PageHeading eyebrow="PHASE 20.3 · AI PRACTICE GENERATOR" title="AI tạo đề luyện tập" desc="Tạo đề mới theo chương, độ khó và hình thức; làm bài, kiểm tra đáp án và chấm tự luận bằng AI."/>
+    <section className="solver-card" style={{marginBottom:20}}>
+      <div className="solver-controls" style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+        <div><label htmlFor="ai-practice-chapter">Chương</label><select id="ai-practice-chapter" value={chapter} onChange={e=>setChapter(e.target.value)}>{chapters.map(c=><option key={c.id} value={String(c.id)}>Chương {c.id}: {c.short}</option>)}</select></div>
+        <div><label htmlFor="ai-practice-difficulty">Độ khó</label><select id="ai-practice-difficulty" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="easy">Dễ</option><option value="medium">Trung bình</option><option value="hard">Khó</option></select></div>
+        <div><label htmlFor="ai-practice-type">Hình thức</label><select id="ai-practice-type" value={type} onChange={e=>setType(e.target.value)}><option value="multiple">Trắc nghiệm</option><option value="essay">Tự luận</option><option value="mixed">Kết hợp</option></select></div>
+        <div><label htmlFor="ai-practice-count">Số câu</label><select id="ai-practice-count" value={count} onChange={e=>setCount(Number(e.target.value))}><option value={5}>5 câu</option><option value={10}>10 câu</option><option value={20}>20 câu</option></select></div>
+      </div>
+      <button type="button" className="primary-button" disabled={loading} onClick={generate} style={{marginTop:16}}>{loading?'AI đang tạo đề...':'✨ Tạo bộ đề mới'}</button>
+      <p className="solver-privacy">Mặc định: chương 3 · trung bình · kết hợp · 10 câu. Đáp án AI có thể sai; hãy kiểm tra lại các phép tính.</p>
+      {error&&<div className="solver-error"><strong>Thông báo</strong><p>{error}</p><button className="secondary-button" onClick={submit}>Thử lại</button></div>}
+    </section>
+    {items.length>0&&<>
+      <div className="section-heading"><div><h2>Bộ đề {items.length} câu</h2><p>{attempted.length}/{mc.length} câu trắc nghiệm đã kiểm tra · {correct} câu đúng</p></div><button className="secondary-button" onClick={()=>setShowAnswers(x=>!x)}>{showAnswers?'Ẩn đáp án tham khảo':'Hiện đáp án tham khảo'}</button></div>
+      {items.map((q,i)=><section key={q.id} className="quiz-card" style={{marginBottom:18}}>
+        <div className="quiz-top"><span className="pill">CÂU {i+1} · {q.type==='multiple'?'TRẮC NGHIỆM':'TỰ LUẬN'}</span><span className="difficulty">{difficulty}</span></div>
+        <div className="solver-answer"><MathMarkdown>{q.prompt}</MathMarkdown></div>
+        {q.type==='multiple'?<>
+          <div className="answer-options">{q.options.map((opt,j)=><button type="button" key={j} disabled={!!revealed[q.id]} className={`answer-option ${Number(responses[q.id])===j?'selected':''} ${revealed[q.id]&&j===q.correctIndex?'correct':''} ${revealed[q.id]&&Number(responses[q.id])===j&&j!==q.correctIndex?'incorrect':''}`} onClick={()=>setResponses(p=>({...p,[q.id]:String(j)}))}><span className="option-letter">{String.fromCharCode(65+j)}</span><span>{opt}</span></button>)}</div>
+          <button className="primary-button" type="button" disabled={responses[q.id]===undefined||!!revealed[q.id]} onClick={()=>setRevealed(p=>({...p,[q.id]:true}))}>Kiểm tra đáp án</button>
+          {revealed[q.id]&&<p><strong>{Number(responses[q.id])===q.correctIndex?'Chính xác!':'Chưa chính xác.'}</strong> Đáp án: {String.fromCharCode(65+q.correctIndex)}</p>}
+        </>:<>
+          <label htmlFor={`essay-${q.id}`}>Bài làm của bạn</label><textarea id={`essay-${q.id}`} rows={5} value={responses[q.id]||''} onChange={e=>setResponses(p=>({...p,[q.id]:e.target.value}))} placeholder="Trình bày dữ kiện, công thức, thay số và kết luận..."/>
+          <button className="primary-button" type="button" disabled={!String(responses[q.id]||'').trim()||busyId!==null} onClick={()=>gradeEssay(q)}>{busyId===q.id?'AI đang chấm...':'Chấm bài tự luận'}</button>
+          {feedback[q.id]&&<div className="solver-answer" style={{marginTop:16}}><MathMarkdown>{feedback[q.id]}</MathMarkdown></div>}
+        </>}
+        {(showAnswers||revealed[q.id])&&<div className="explanation good" style={{marginTop:14}}><strong>Giải thích / đáp án tham khảo</strong><div className="solver-answer"><MathMarkdown>{q.explanation}</MathMarkdown></div></div>}
+      </section>)}
+    </>}
+  </>;
+}
+
+// Chuyển ảnh sang JPEG dung lượng phù hợp giới hạn backend (4 MB/ảnh).
+async function prepareSolverImage(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    throw new Error('Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.');
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Không thể xử lý ảnh này.');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    let quality = 0.88;
+    let result = canvas.toDataURL('image/jpeg', quality);
+    while (result.length > 5_000_000 && quality > 0.35) {
+      quality -= 0.12;
+      result = canvas.toDataURL('image/jpeg', quality);
+    }
+    if (result.length > 5_000_000) {
+      throw new Error('Ảnh quá lớn. Hãy chụp lại hoặc giảm độ phân giải.');
+    }
+    return result;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+function SolvePage({ initialProblem = '', onSaveNote = () => {} }) {
+  const [mode, setMode] = useState('solve');
+  const [problem, setProblem] = useState(initialProblem);
+  const [studentAnswer, setStudentAnswer] = useState('');
+  const [problemImages, setProblemImages] = useState([]);
+  const [answerImages, setAnswerImages] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [chapter, setChapter] = useState('auto');
+  const [level, setLevel] = useState('chi-tiet');
+  const [answer, setAnswer] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [preview, setPreview] = useState(false);
+  const problemPickerRef = useRef(null);
+  const answerPickerRef = useRef(null);
+
+  useEffect(() => {
+    if (initialProblem) setProblem(initialProblem);
+  }, [initialProblem]);
+
+  const changeMode = (next) => {
+    if (loading || next === mode) return;
+    setMode(next);
+    setAnswer('');
+    setError('');
+  };
+
+  const addImages = async (event, target) => {
+    const files = Array.from(event.target.files || []);
+    if (event.target.value !== undefined) event.target.value = '';
+    if (!files.length) return;
+    const existing = problemImages.length + answerImages.length;
+    if (existing + files.length > 3) {
+      setError('Tổng cộng chỉ được tải tối đa 3 ảnh cho mỗi lần gửi AI.');
+      return;
+    }
+    setUploading(true);
+    setError('');
+    try {
+      const prepared = await Promise.all(files.map(async file => ({
+        name: file.name,
+        data: await prepareSolverImage(file)
+      })));
+      if (target === 'problem') setProblemImages(old => [...old, ...prepared]);
+      else setAnswerImages(old => [...old, ...prepared]);
+    } catch (e) {
+      setError(e.message || 'Không thể xử lý ảnh.');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const removeImage = (target, index) => {
+    if (target === 'problem') setProblemImages(old => old.filter((_, i) => i !== index));
+    else setAnswerImages(old => old.filter((_, i) => i !== index));
+  };
+  useEffect(()=>{const paste=e=>{const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith('image/'));if(files.length){e.preventDefault();addImages({target:{files,value:''}},mode==='grade'&&document.activeElement?.id==='student-answer-input'?'answer':'problem');}};document.addEventListener('paste',paste);return()=>document.removeEventListener('paste',paste);},[mode,problemImages,answerImages,loading,uploading]);
+  const imagePicker = (target, items, title) => {
+    const inputRef=target==='problem'?problemPickerRef:answerPickerRef;
+    return <div className="solver-upload"><label className="solver-field-label">{title}</label><div className="solver-dropzone" role="button" tabIndex={0} aria-label={`${title}, bấm hoặc kéo ảnh vào đây`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inputRef.current?.click();}}} onClick={()=>inputRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const files=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/'));addImages({target:{files,value:''}},target);}}><UploadCloud size={25}/><strong>Kéo ảnh vào đây hoặc bấm để chọn</strong><small>JPG, PNG, WebP · tối đa 3 ảnh · Có thể dán bằng Ctrl+V</small><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={loading||uploading||problemImages.length+answerImages.length>=3} onChange={e=>addImages(e,target)} onClick={e=>e.stopPropagation()} /></div>{items.length>0&&<div className="solver-thumbnails">{items.map((item,index)=><div key={`${target}-${index}`}><img src={item.data} alt={`Ảnh đã tải: ${item.name}`} /><button aria-label={`Xóa ${item.name}`} onClick={()=>removeImage(target,index)}><X size={15}/></button></div>)}</div>}</div>;
+  };
+
+  const submit = async () => {
+    if (loading || uploading || (!problem.trim() && !problemImages.length) || (mode === 'grade' && !studentAnswer.trim() && !answerImages.length)) return;
+    setLoading(true);
+    setError('');
+    setAnswer('');
+    try {
+      const endpoint = mode === 'grade' ? '/api/grade' : '/api/solve';
+      const response = await fetch(`https://xstk-academy.onrender.com${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: problem.trim() || (problemImages.length ? '[Đề bài trong ảnh đính kèm]' : ''),
+          ...(mode === 'grade' ? { studentAnswer: studentAnswer.trim() || (answerImages.length ? '[Bài làm trong ảnh đính kèm]' : '') } : {}),
+          images: [...problemImages, ...(mode === 'grade' ? answerImages : [])].map(item => item.data),
+          chapter,
+          level
+        })
+      });
+      const data = await response.json().catch(() => {
+        throw new Error('Máy chủ trả về dữ liệu không hợp lệ.');
+      });
+      if (!response.ok) throw new Error(data?.error || `Máy chủ AI gặp lỗi (${response.status}).`);
+      if (typeof data?.answer !== 'string' || !data.answer.trim()) {
+        throw new Error('AI chưa trả về kết quả. Vui lòng thử lại.');
+      }
+      setAnswer(data.answer);
+    } catch (e) {
+      setError(e instanceof TypeError && e.message === 'Failed to fetch'
+        ? 'Không kết nối được máy chủ AI. Kiểm tra Render và cấu hình CORS.'
+        : e?.message || 'Có lỗi khi xử lý yêu cầu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <>
+    <PageHeading
+      eyebrow="TRỢ GIẢNG XSTK"
+      title={mode === 'grade' ? 'Chấm điểm bài làm bằng AI' : 'Giải bài tập từng bước'}
+      desc={mode === 'grade'
+        ? 'Nhập đề bài và bài làm để AI nhận xét, chấm điểm theo thang 10 và hướng dẫn sửa lỗi.'
+        : 'Nhập nguyên đề bài. Trợ giảng sẽ nhận diện dữ kiện, chọn công thức và giải từng bước.'}
+    />
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+      <button type="button" className={mode === 'solve' ? 'primary-button' : 'secondary-button'} onClick={() => changeMode('solve')} disabled={loading}>
+        <Sparkles size={16}/> Giải bài tập
+      </button>
+      <button type="button" className={mode === 'grade' ? 'primary-button' : 'secondary-button'} onClick={() => changeMode('grade')} disabled={loading}>
+        <Award size={16}/> Chấm điểm bài làm
+      </button>
+    </div>
+    <div className="solver-layout">
+      <section className="solver-card">
+        <label htmlFor="problem-input">Đề bài của bạn</label>
+        <textarea id="problem-input" value={problem} onChange={e => setProblem(e.target.value)} rows={6}
+          placeholder="Nhập đề bài hoặc tải ảnh chụp đề bài..."/>
+        <div className="solver-helpers"><button className="secondary-button" onClick={()=>setPreview(!preview)}>{preview?'Ẩn':'Xem trước'} công thức</button><button className="solver-example" onClick={()=>setProblem('Một hệ thống ghi nhận trung bình 6 lỗi mỗi giờ theo phân phối Poisson. Tính xác suất có đúng 2 lỗi trong 10 phút.')}>Ví dụ: Poisson</button><button className="solver-example" onClick={()=>setProblem('X có phân phối chuẩn với trung bình 80 và độ lệch chuẩn 8. Tính P(X > 90).')}>Ví dụ: Phân phối chuẩn</button></div>{preview&&<div className="solver-preview"><MathMarkdown>{problem}</MathMarkdown></div>}
+        {imagePicker('problem', problemImages, 'Tải ảnh đề bài')}
+        {mode === 'grade' && <>
+          <label htmlFor="student-answer-input" style={{ display: 'block', marginTop: 18 }}>Bài làm của bạn</label>
+          <textarea id="student-answer-input" value={studentAnswer} onChange={e => setStudentAnswer(e.target.value)} rows={8}
+            placeholder="Nhập bài làm hoặc tải ảnh chụp bài làm..."/>
+          {imagePicker('answer', answerImages, 'Tải ảnh bài làm để chấm')}
+          <p className="solver-privacy">AI chấm theo thang điểm 10 và giải thích lỗi sai. Điểm số chỉ mang tính tham khảo.</p>
+        </>}
+        <div className="solver-controls">
+          <div>
+            <label htmlFor="chapter-select">Chủ đề</label>
+            <select id="chapter-select" value={chapter} onChange={e => setChapter(e.target.value)}>
+              <option value="auto">Tự nhận diện</option>
+              {chapters.map(c => <option key={c.id} value={String(c.id)}>Bài {c.id}: {c.short}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="level-select">Cách trình bày</label>
+            <select id="level-select" value={level} onChange={e => setLevel(e.target.value)}>
+              <option value="chi-tiet">Giải thích chi tiết</option>
+              <option value="ngan-gon">Công thức và tính toán ngắn gọn</option>
+              <option value="goi-y">Gợi ý từng bước</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" className="primary-button solver-submit" onClick={submit}
+          disabled={(!problem.trim() && !problemImages.length) || loading || uploading || (mode === 'grade' && !studentAnswer.trim() && !answerImages.length)}>
+          {loading ? <><span className="spinner"/> {mode === 'grade' ? 'AI đang chấm...' : 'Đang giải...'}</>
+            : mode === 'grade' ? <><Award size={16}/> Chấm điểm bài làm</>
+              : <><Sparkles size={16}/> Giải bài từng bước</>}
+        </button>
+        {!problem.trim()&&!problemImages.length&&<p className="solver-privacy">Nhập đề bài hoặc tải ảnh để bắt đầu.</p>}
+        <p className="solver-privacy">Không nhập thông tin cá nhân. Hãy kiểm tra lại kết quả do AI tạo.</p>
+        {error && <div className="solver-error"><strong>Chưa xử lý được</strong><p>{error}</p><button className="secondary-button" onClick={submit}>Thử lại</button></div>}
+      </section>
+      <section className="solver-result">
+        <div className="solver-result-head">
+          <div className="solver-result-icon">{mode === 'grade' ? <Award size={20}/> : <Sigma size={20}/>}</div>
+          <div><h2>{mode === 'grade' ? 'Kết quả chấm điểm' : 'Lời giải'}</h2>
+            <p>{mode === 'grade' ? 'Điểm, nhận xét và hướng dẫn sửa lỗi sẽ hiển thị tại đây' : 'Các bước sẽ hiển thị tại đây'}</p>
+          </div>
+        </div>
+        {answer ? <div className="solver-answer"><div className="solver-answer-actions"><button className="secondary-button" onClick={()=>navigator.clipboard?.writeText(answer)}><Copy size={15}/> Sao chép</button><button className="secondary-button" onClick={()=>onSaveNote(answer)}><Bookmark size={15}/> Lưu vào sổ tay</button><button className="secondary-button" onClick={()=>{setProblem(p=>`${p}\nHãy giải thích rõ hơn bước tôi chưa hiểu trong lời giải trước.`);setAnswer('')}}><CircleHelp size={15}/> Hỏi thêm</button></div><MathMarkdown>{answer}</MathMarkdown></div>
+          : <div className="solver-empty">
+              <div className="solver-empty-icon">{mode === 'grade' ? <Award size={25}/> : <NotebookPen size={25}/>}</div>
+              <strong>{mode === 'grade' ? 'Sẵn sàng chấm bài của bạn' : 'Hãy bắt đầu từ đề bài'}</strong>
+              <p>{mode === 'grade'
+                ? 'Nhập đề và bài làm để AI đánh giá công thức, phương pháp, tính toán và kết luận.'
+                : 'Một lời giải tốt cần chỉ ra dữ kiện, công thức phù hợp, thay số và kết luận.'}</p>
+              <div className="solver-checklist">
+                <span><CheckCircle2 size={15}/> {mode === 'grade' ? 'Chấm theo thang 10' : 'Xác định dạng toán'}</span>
+                <span><CheckCircle2 size={15}/> {mode === 'grade' ? 'Nhận xét bước làm đúng' : 'Nêu công thức và điều kiện'}</span>
+                <span><CheckCircle2 size={15}/> {mode === 'grade' ? 'Chỉ ra lỗi sai' : 'Tính toán từng bước'}</span>
+                <span><CheckCircle2 size={15}/> {mode === 'grade' ? 'Đưa lời giải tham khảo' : 'Kết luận dễ hiểu'}</span>
+              </div>
+            </div>}
+      </section>
+    </div>
+  </>;
+}
+
+function ReviewPage({wrong,onPractice}) { const wrongQs=questions.filter(q=>wrong.includes(q.id));return <><PageHeading eyebrow="ÔN TẬP THÔNG MINH" title="Câu sai cần ôn tập" desc="Tập trung vào câu hỏi bạn đã trả lời chưa đúng." action={<button className="primary-button" onClick={onPractice}>Luyện tập <ArrowRight size={15}/></button>}/>{wrongQs.length?<div className="review-list">{wrongQs.map(q=><div className="review-card" key={q.id}><div className="review-icon"><RotateCcw size={17}/></div><div><span className="lesson-meta">CHƯƠNG {q.chapterId} · {q.topic}</span><h3>{q.prompt}</h3><p>{q.explanation}</p></div></div>)}</div>:<div className="empty-state"><CheckCircle2 size={28}/><strong>Chưa có câu sai cần ôn</strong><span>Hãy làm bài trong Phòng thực hành. Câu trả lời sai sẽ xuất hiện ở đây.</span><button className="primary-button" onClick={onPractice}>Bắt đầu luyện tập <ArrowRight size={15}/></button></div>}</>; }
+function NotesPage({notes,note,setNote,activeNote,setActiveNote,update}) { const add=()=>{if(!note.trim())return;update('notes',[{id:Date.now(),text:note.trim(),createdAt:new Date().toLocaleDateString('vi-VN')},...notes]);setNote('');};const remove=(id)=>update('notes',notes.filter(n=>n.id!==id));return <><PageHeading eyebrow="GÓC GHI NHỚ" title="Sổ tay công thức" desc="Lưu lại công thức, lưu ý và cách giải do chính bạn ghi chép."/><div className="notes-layout"><div className="note-editor"><label htmlFor="note">Ghi chú mới</label><textarea id="note" value={note} onChange={e=>setNote(e.target.value)} placeholder="Ví dụ: Khi dùng Poisson, cần đổi λ theo độ dài khoảng thời gian..."/><div className="note-editor-footer"><span>{note.length} ký tự</span><button className="primary-button" onClick={add} disabled={!note.trim()}>Lưu ghi chú <Bookmark size={15}/></button></div></div><div className="notes-list"><div className="section-heading compact"><h2>Ghi chú của bạn <span className="count-badge">{notes.length}</span></h2></div>{notes.length?notes.map(n=><div className="saved-note" key={n.id}><div className="saved-note-top"><span><NotebookPen size={14}/>{n.createdAt}</span><button className="icon-button" onClick={()=>remove(n.id)} aria-label="Xóa ghi chú"><X size={15}/></button></div><p>{n.text}</p></div>):<div className="empty-state small-empty"><NotebookPen size={23}/><strong>Chưa có ghi chú</strong><span>Ghi lại công thức hoặc điều bạn hay nhầm.</span></div>}</div></div></>; }
+function StatsPage({completed,xp,attempts}) { const byChapter=chapters.map(c=>{const ls=lessons.filter(l=>l.chapterId===c.id);return {...c,done:ls.filter(l=>completed.includes(l.id)).length,total:ls.length}});return <><PageHeading eyebrow="BÁO CÁO TIẾN BỘ" title="Thống kê kết quả học" desc="Theo dõi mức độ hoàn thành các chương trong hành trình XSTK."/><div className="stats-grid stats-grid-wide"><StatCard icon={BookOpen} label="Bài hoàn thành" value={completed.length} detail={`trên tổng ${lessons.length} bài`} tone="green"/><StatCard icon={Award} label="XP tích lũy" value={xp} detail="Điểm kinh nghiệm" tone="gold"/><StatCard icon={Activity} label="Chương đang học" value={byChapter.filter(c=>c.done>0&&c.done<c.total).length} detail="Đã bắt đầu nhưng chưa xong" tone="purple"/></div><div className="panel"><div className="section-heading compact"><h2>Tiến độ theo chương</h2></div><div className="chapter-progress-list">{byChapter.map(c=><div className="chapter-progress-row" key={c.id}><div className="chapter-progress-label"><span>Chương {c.id}</span><strong>{c.short}</strong></div><ProgressBar value={c.done/c.total*100}/><span className="progress-number">{c.done}/{c.total}</span></div>)}</div></div><div className="source-note stats-note"><CircleHelp size={17}/><span>Độ chính xác và thời gian làm bài sẽ được bổ sung khi hệ thống lưu kết quả chi tiết cho từng lượt làm. Bản hiện tại ưu tiên tiến độ bài học và điểm XP cơ bản.</span></div></>; }
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error) { console.error('XSTK Academy render error:', error); }
+  render() {
+    if (this.state.hasError) return <main style={{maxWidth:720,margin:'12vh auto',padding:24,fontFamily:'system-ui,sans-serif',color:'#26352b'}}><h1>Đã xảy ra lỗi khi hiển thị trang</h1><p>Website không bị mất dữ liệu học đã lưu. Hãy tải lại trang; nếu lỗi tiếp diễn, mở Console của trình duyệt để xem chi tiết kỹ thuật.</p><button onClick={()=>window.location.reload()} style={{padding:'10px 16px',borderRadius:8,border:0,background:'#2f7651',color:'#fff',cursor:'pointer'}}>Tải lại trang</button></main>;
+    return this.props.children;
+  }
+}
+
+createRoot(document.getElementById('root')).render(<React.StrictMode><AppErrorBoundary><App/></AppErrorBoundary></React.StrictMode>);
