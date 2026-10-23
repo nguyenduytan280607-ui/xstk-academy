@@ -1,0 +1,26 @@
+XSTK ACADEMY — MÁY TÍNH XSTK TRỰC QUAN 4.0
+
+NGUỒN TÍCH HỢP: bản XSTK_Flashcard_3_0 đang có trong cuộc trò chuyện. CHƯA đối chiếu trực tiếp với commit GitHub mới nhất.
+
+CẬP NHẬT TRÊN GITHUB (nếu main.jsx và styles.css trên GitHub vẫn là bản Flashcard 3.0):
+1. Sao lưu main.jsx và styles.css từ GitHub.
+2. Thay main.jsx, styles.css bằng bản trong ZIP.
+3. Thêm XSTKCalculator.jsx vào thư mục gốc, cùng cấp main.jsx.
+4. Nếu GitHub chưa có FlashcardNotebook.jsx thì bổ sung file đi kèm.
+5. Giữ nguyên data.js, server.js, firebase.js, package.json, ảnh và PDF.
+6. Commit lên main và kiểm tra Vercel Build Logs.
+7. Mở menu 'Máy tính XSTK' và thử 4 chế độ.
+
+Nếu mã trên GitHub đã thay đổi sau bản Flashcard 3.0: KHÔNG ghi đè main.jsx/styles.css. Gửi hai file mới nhất để ghép riêng.
+
+THỬ NHANH:
+- Chuẩn: mu=80, sigma=10, a=95, vùng bên trái -> khoảng 0.933193.
+- Poisson: lambda=1, k=2, đúng 2 -> khoảng 0.183940.
+- Nhị thức: n=10, p=0.3, k=2 -> khoảng 0.233474.
+- Ước lượng z: xbar=80, sigma=12, n=36, tin cậy=0.95 -> [76.08, 83.92].
+
+CÁC GIỚI HẠN:
+- Đồ thị chuẩn tô vùng trong phạm vi mu ± 4sigma; xác suất tính theo CDF toàn miền.
+- Ước lượng chỉ dùng z khi biết sigma tổng thể; chưa hỗ trợ t-Student.
+- Tính trực tiếp trên browser, không gọi backend; không thay đổi localStorage cũ.
+- Đã kiểm tra cú pháp JSX bằng TypeScript parser, chưa chạy build Vite/kiểm thử trình duyệt vì không có dependencies trong môi trường.
