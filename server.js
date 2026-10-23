@@ -231,13 +231,154 @@ async function callGroq({
   return content.trim();
 }
 
+// =====================================================
 // PHASE 20.3 - TẠO BỘ ĐỀ AI
+// =====================================================
+
+// Chuẩn hóa phương án để kiểm tra trùng lặp.
+function normalizePracticeOption(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[.,;:!?]/g, '')
+    .trim();
+}
+
+// Kiểm tra cấu trúc và tính duy nhất của đáp án.
+function validatePracticeQuestions(
+  questions,
+  count,
+  multipleCount
+) {
+  if (
+    !Array.isArray(questions) ||
+    questions.length !== count
+  ) {
+    return {
+      valid: false,
+      reason: 'AI tạo thiếu hoặc thừa câu hỏi.'
+    };
+  }
+
+  const ids = new Set();
+  let actualMultiple = 0;
+
+  for (let index = 0; index < questions.length; index++) {
+    const q = questions[index];
+
+    if (
+      !q ||
+      typeof q.id !== 'string' ||
+      !q.id.trim() ||
+      typeof q.prompt !== 'string' ||
+      !q.prompt.trim() ||
+      typeof q.explanation !== 'string' ||
+      !q.explanation.trim()
+    ) {
+      return {
+        valid: false,
+        reason: `Câu ${index + 1} thiếu dữ liệu.`
+      };
+    }
+
+    if (ids.has(q.id)) {
+      return {
+        valid: false,
+        reason: `ID câu hỏi ${q.id} bị trùng.`
+      };
+    }
+
+    ids.add(q.id);
+
+    if (q.type === 'multiple') {
+      actualMultiple++;
+
+      if (
+        !Array.isArray(q.options) ||
+        q.options.length !== 4
+      ) {
+        return {
+          valid: false,
+          reason: `Câu ${index + 1} không có đúng 4 phương án.`
+        };
+      }
+
+      if (
+        !q.options.every(
+          option =>
+            typeof option === 'string' &&
+            option.trim().length > 0
+        )
+      ) {
+        return {
+          valid: false,
+          reason: `Câu ${index + 1} có phương án trống.`
+        };
+      }
+
+      const normalizedOptions =
+        q.options.map(normalizePracticeOption);
+
+      if (
+        normalizedOptions.some(option => !option) ||
+        new Set(normalizedOptions).size !== 4
+      ) {
+        return {
+          valid: false,
+          reason:
+            `Câu ${index + 1} có các phương án trùng nhau.`
+        };
+      }
+
+      if (
+        !Number.isInteger(q.correctIndex) ||
+        q.correctIndex < 0 ||
+        q.correctIndex > 3
+      ) {
+        return {
+          valid: false,
+          reason:
+            `Câu ${index + 1} có correctIndex không hợp lệ.`
+        };
+      }
+    } else if (q.type === 'essay') {
+      if (
+        !Array.isArray(q.options) ||
+        q.options.length !== 0 ||
+        q.correctIndex !== null
+      ) {
+        return {
+          valid: false,
+          reason:
+            `Câu tự luận ${index + 1} sai cấu trúc.`
+        };
+      }
+    } else {
+      return {
+        valid: false,
+        reason:
+          `Câu ${index + 1} có loại câu hỏi không hợp lệ.`
+      };
+    }
+  }
+
+  if (actualMultiple !== multipleCount) {
+    return {
+      valid: false,
+      reason: 'Số câu trắc nghiệm không đúng yêu cầu.'
+    };
+  }
+
+  return { valid: true };
+}
 
 async function generatePractice(body) {
   const chapter = String(body.chapter ?? '3');
   const difficulty = String(body.difficulty ?? 'medium');
   const requestedType = String(body.type ?? 'mixed');
-  const type = requestedType === 'mcq' ? 'multiple' : requestedType;
+  const type =
+    requestedType === 'mcq' ? 'multiple' : requestedType;
   const count = Number(body.count ?? 10);
 
   if (
@@ -291,6 +432,32 @@ Yêu cầu:
 7. Chỉ xuất JSON hợp lệ, không Markdown.
 8. Tạo đúng số lượng từng loại câu.
 
+QUY TẮC BẮT BUỘC CHO TRẮC NGHIỆM:
+- Mỗi câu có chính xác 4 phương án A, B, C, D.
+- Cả 4 phương án phải khác nhau về nội dung.
+- Không được lặp lại cùng một giá trị hoặc cùng một cặp
+  kết quả ở nhiều phương án.
+- Chỉ có đúng 1 phương án chính xác.
+- Ba phương án còn lại phải sai về mặt toán học.
+- Không được tạo câu mà tất cả phương án đều đúng.
+- Không được tạo câu mà tất cả phương án đều sai.
+- Tính đáp án bằng công thức trước khi tạo phương án.
+- correctIndex phải trỏ đến phương án chính xác.
+- explanation phải nhất quán với correctIndex.
+- Nếu kết quả tính không khớp phương án nào,
+  phải sửa lại phương án trước khi xuất JSON.
+- Không chọn phương án gần nhất nếu đề không yêu cầu
+  làm tròn hoặc chọn giá trị gần đúng.
+- Với số gần đúng, nêu rõ quy tắc làm tròn.
+
+VÍ DỤ KIỂM TRA:
+Nếu X ~ B(n=12, p=0.3):
+E[X] = 12 * 0.3 = 3.6
+Var(X) = 12 * 0.3 * 0.7 = 2.52
+
+Không được tạo bốn phương án đều ghi:
+E[X]=3.6, Var(X)=2.52.
+
 Định dạng JSON bắt buộc:
 
 {
@@ -321,110 +488,91 @@ Yêu cầu:
 
 Quy tắc:
 - type chỉ được là multiple hoặc essay.
-- Trắc nghiệm có đúng 4 lựa chọn.
+- Trắc nghiệm có đúng 4 lựa chọn khác nhau.
 - correctIndex là số nguyên từ 0 đến 3.
 - Tự luận có lời giải rõ công thức và phép tính.
 - ID duy nhất từ q1 đến q${count}.
 - Không có văn bản ngoài JSON.
 `;
 
-  const content = await callGroq({
-    system,
-    userContent:
-      'Hãy tạo bộ đề theo đúng cấu hình và chỉ trả về JSON.',
-    maxTokens: 8192,
-    timeoutMs: 90000
-  });
+  // Tối đa 3 lần tạo đề nếu AI trả về dữ liệu sai.
+  const MAX_ATTEMPTS = 3;
+  let lastReason = 'Không xác định.';
 
-  let parsed;
-
-  try {
-    const clean = content
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '');
-
-    parsed = JSON.parse(clean);
-  } catch {
-    const error = new Error(
-      'AI trả về JSON không hợp lệ. Hãy tạo lại bộ đề.'
-    );
-    error.status = 502;
-    throw error;
-  }
-
-  const questions = parsed?.questions;
-
-  if (
-    !Array.isArray(questions) ||
-    questions.length !== count
+  for (
+    let attempt = 1;
+    attempt <= MAX_ATTEMPTS;
+    attempt++
   ) {
-    const error = new Error(
-      'AI tạo thiếu câu hỏi. Hãy thử lại.'
+    const userContent =
+      attempt === 1
+        ? 'Hãy tạo bộ đề theo đúng cấu hình và chỉ trả về JSON.'
+        : `Hãy tạo lại toàn bộ đề theo đúng cấu hình.
+Lần trước bộ đề không hợp lệ vì: ${lastReason}
+Đặc biệt kiểm tra 4 phương án khác nhau,
+chỉ có một đáp án đúng và lời giải nhất quán.
+Chỉ trả về JSON hợp lệ.`;
+
+    const content = await callGroq({
+      system,
+      userContent,
+      maxTokens: 8192,
+      timeoutMs: 90000
+    });
+
+    let parsed;
+
+    try {
+      const clean = content
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '');
+
+      parsed = JSON.parse(clean);
+    } catch {
+      lastReason = 'AI trả về JSON không hợp lệ.';
+
+      console.warn(
+        `[Practice] Lần ${attempt}: ${lastReason}`
+      );
+
+      continue;
+    }
+
+    const questions = parsed?.questions;
+
+    const validation = validatePracticeQuestions(
+      questions,
+      count,
+      multipleCount
     );
-    error.status = 502;
-    throw error;
+
+    if (validation.valid) {
+      console.log(
+        `[Practice] Bộ đề hợp lệ sau lần ${attempt}.`
+      );
+
+      return { questions };
+    }
+
+    lastReason = validation.reason;
+
+    console.warn(
+      `[Practice] Lần ${attempt}: ${lastReason}`
+    );
   }
 
-  const valid = questions.every(q => {
-    if (
-      !q ||
-      typeof q.id !== 'string' ||
-      !q.id.trim() ||
-      typeof q.prompt !== 'string' ||
-      !q.prompt.trim() ||
-      typeof q.explanation !== 'string' ||
-      !q.explanation.trim()
-    ) {
-      return false;
-    }
+  const error = new Error(
+    'AI chưa tạo được bộ đề hợp lệ sau 3 lần thử. ' +
+    'Vui lòng tạo lại bộ đề.'
+  );
 
-    if (q.type === 'multiple') {
-      return (
-        Array.isArray(q.options) &&
-        q.options.length === 4 &&
-        q.options.every(
-          o => typeof o === 'string' && o.trim()
-        ) &&
-        Number.isInteger(q.correctIndex) &&
-        q.correctIndex >= 0 &&
-        q.correctIndex <= 3
-      );
-    }
-
-    if (q.type === 'essay') {
-      return (
-        Array.isArray(q.options) &&
-        q.options.length === 0 &&
-        q.correctIndex === null
-      );
-    }
-
-    return false;
-  });
-
-  const actualMultiple = questions.filter(
-    q => q.type === 'multiple'
-  ).length;
-
-  const uniqueIds =
-    new Set(questions.map(q => q.id)).size === count;
-
-  if (
-    !valid ||
-    !uniqueIds ||
-    actualMultiple !== multipleCount
-  ) {
-    const error = new Error(
-      'Bộ đề chưa đúng cấu trúc. Hãy thử tạo lại.'
-    );
-    error.status = 502;
-    throw error;
-  }
-
-  return { questions };
+  error.status = 502;
+  throw error;
 }
 
+// =====================================================
 // PHASE 20.1 + 20.2 - GIẢI VÀ CHẤM BÀI
+// =====================================================
 
 async function solveOrGrade(body, grading) {
   const images = validateImages(body.images);
@@ -547,7 +695,9 @@ Không bịa dữ kiện.`
   return { answer };
 }
 
+// =====================================================
 // SERVER
+// =====================================================
 
 const server = http.createServer((req, res) => {
   const origin = req.headers.origin;
